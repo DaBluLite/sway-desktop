@@ -7,6 +7,9 @@ on:
     paths:
       - 'package.json'
 
+permissions:
+  contents: write
+
 jobs:
   # First job: Check if version changed
   check-version:
