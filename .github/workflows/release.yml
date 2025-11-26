@@ -1,0 +1,146 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+
+jobs:
+  # First job: Check if version changed
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          CURRENT_VERSION=$(jq -r '.version' package.json)
+          git checkout HEAD~1 -- package.json 2>/dev/null || echo "First commit"
+          PREVIOUS_VERSION=$(jq -r '.version' package.json 2>/dev/null || echo "0.0.0")
+          git checkout HEAD -- package.json
+          
+          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged: $CURRENT_VERSION"
+          fi
+
+      - name: Get version
+        id: get-version
+        run: echo "version=$(jq -r '.version' package.json)" >> $GITHUB_OUTPUT
+
+  # Build job for all platforms
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build application
+        run: pnpm build:linux
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build application
+        run: pnpm build:win
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build application
+        run: pnpm build:mac
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-builds
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.rpm
+            dist/*.tar.gz
+
+      - name: Upload Windows artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-builds
+          path: |
+            dist/*.exe
+            dist/*.msi
+
+      - name: Upload macOS artifacts
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-builds
+          path: |
+            dist/*.dmg
+            dist/*.zip
+
+  # Release job
+  release:
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Release v${{ needs.check-version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
