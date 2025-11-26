@@ -26,7 +26,7 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  mainWindow.loadURL('http://localhost:3000')
+  mainWindow.loadURL('http://sway.dablulite.dev')
 }
 
 // This method will be called when Electron has finished
