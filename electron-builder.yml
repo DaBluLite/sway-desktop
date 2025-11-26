@@ -39,7 +39,6 @@ linux:
     - snap
     - deb
     - rpm
-    - flatpak
   maintainer: electronjs.org
   category: Utility
 appImage:
