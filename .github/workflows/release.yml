@@ -69,6 +69,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Install flatpak dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
       - name: Build application
         run: pnpm build:linux -- --publish never
         if: matrix.os == 'ubuntu-latest'
@@ -91,6 +97,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.tar.gz
+            dist/*.flatpak
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
