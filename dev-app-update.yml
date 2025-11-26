@@ -1,3 +1,3 @@
 provider: generic
-url: https://example.com/auto-updates
+url: https://sway.dablulite.dev/desktop/auto-updates
 updaterCacheDirName: sway-desktop-updater

@@ -13,11 +13,16 @@ asarUnpack:
   - resources/**
 win:
   executableName: sway-desktop
+  target:
+    - nsis
+    - portable
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+portable:
+  artifactName: ${name}-${version}-portable.${ext}
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -33,6 +38,8 @@ linux:
     - AppImage
     - snap
     - deb
+    - rpm
+    - flatpak
   maintainer: electronjs.org
   category: Utility
 appImage:
@@ -40,6 +47,6 @@ appImage:
 npmRebuild: false
 publish:
   provider: generic
-  url: https://example.com/auto-updates
+  url: https://sway.dablulite.dev/desktop/auto-updates
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
