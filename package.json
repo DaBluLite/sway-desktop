@@ -1,10 +1,10 @@
 {
   "name": "sway-desktop",
-  "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "version": "2.0.0",
+  "description": "A new way to listen to and explore radio stations worldwide.",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "DaBluLite",
+  "homepage": "https://sway.dablulite.dev",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -25,10 +25,12 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@mdi/js": "^7.4.47",
     "@mdi/react": "^1.6.1",
+    "@react-google-maps/api": "^2.20.8",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-router": "^1.168.10",
     "@tanstack/react-router-devtools": "^1.166.11",
     "electron-updater": "^6.3.9",
+    "node-mpv": "^1.5.0",
     "radio-browser-api": "^6.0.3",
     "react-castjs": "^1.0.2",
     "tailwindcss": "^4.2.2"
@@ -39,6 +41,7 @@
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@tanstack/router-plugin": "^1.167.12",
     "@types/node": "^22.19.1",
+    "@types/play-sound": "^1.1.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
@@ -53,7 +56,8 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vite-plugin-svgr": "^5.2.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
