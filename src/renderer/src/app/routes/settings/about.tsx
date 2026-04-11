@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import Wordmark from '@renderer/assets/wordmark.svg?react'
+import Wordmark from '@renderer/assets/wordmark'
 
 export const Route = createFileRoute('/settings/about')({
   component: AboutSection

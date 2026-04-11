@@ -1,9 +1,33 @@
-import { mdiRecord } from '@mdi/js'
-import Icon from '@mdi/react'
+import Wordmark from '@renderer/assets/wordmark'
 import { useWindow } from '@renderer/contexts/window-context'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouter } from '@tanstack/react-router'
+import { Disc3, EllipsisVertical, House, ListMusic, MicVocal, Music, Radio } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { usePlaylists } from '@renderer/contexts/playlists-context'
+import { useSubsonic } from '@renderer/contexts/subsonic-context'
 
 function Navbar() {
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+  } | null>(null)
+  const { subsonicEnabled } = useSubsonic()
+  const { playlists } = usePlaylists()
+  const handleContextMenu = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }
+
+  const handleCloseContextMenu = (): void => {
+    setContextMenu(null)
+  }
+
+  useEffect(() => {
+    document.addEventListener('click', handleCloseContextMenu)
+    return () => document.removeEventListener('click', handleCloseContextMenu)
+  }, [contextMenu])
+
   const handleMinimize = () => {
     window.api.window.minimize()
   }
@@ -17,70 +41,100 @@ function Navbar() {
   }
   const { windowState } = useWindow()
 
+  const router = useRouter()
+
   return (
-    <div className="navbar">
-      <div className="navbar-left">
-        <Link to="/" className="nav-item">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="size-4"
+    <>
+      {subsonicEnabled && (
+        <div className="navbar">
+          <div className="flex justify-between items-center gap-2">
+            <Wordmark className="use-theme-text h-6 m-3 w-fit" />
+            <button
+              className="invis-btn rounded-full p-2 cursor-pointer"
+              onClick={handleContextMenu}
+            >
+              <EllipsisVertical className="use-theme-text size-4" />
+            </button>
+          </div>
+          {subsonicEnabled && (
+            <Link to="/" className="nav-item">
+              <House className="size-4" />
+              Home
+            </Link>
+          )}
+          <Link to="/radio" className="nav-item">
+            <Radio className="size-4" />
+            {subsonicEnabled ? 'Radio' : 'Home'}
+          </Link>
+          {subsonicEnabled && (
+            <div className="navbar-categories">
+              <div className="navbar-category">
+                <span className="navbar-category-header">Library</span>
+                <Link to="/library/songs" className="nav-item">
+                  <Music className="size-4" />
+                  Songs
+                </Link>
+                <Link to="/library/albums" className="nav-item">
+                  <Disc3 className="size-4" />
+                  Albums
+                </Link>
+                <Link to="/library/artists" className="nav-item">
+                  <MicVocal className="size-4" />
+                  Artists
+                </Link>
+                <Link to="/library/playlists" className="nav-item">
+                  <ListMusic className="size-4" />
+                  Playlists
+                </Link>
+                <Link to="/library/stations" className="nav-item">
+                  <Radio className="size-4" />
+                  Stations
+                </Link>
+                <div className="navbar-category-header flex items-center justify-between">
+                  <span>Playlists</span>
+                  <div className="flex items-center gap-1"></div>
+                </div>
+                {playlists.map((pl) => (
+                  <Link
+                    key={pl.id}
+                    to={'/library/playlists/$playlistId'}
+                    params={{ playlistId: pl.id }}
+                    className="nav-item"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span>{pl.name}</span>
+                      <span className="text-xs opacity-50">{pl.songCount} Songs</span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {contextMenu && (
+        <div
+          className="context-menu"
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            zIndex: 1000
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              router.navigate({ to: '/settings' })
+              handleCloseContextMenu()
+            }}
           >
-            <path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z" />
-            <path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z" />
-          </svg>
-          Home
-        </Link>
-        <Link to="/library" className="nav-item">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="size-4"
-          >
-            <path d="M5.625 3.75a2.625 2.625 0 1 0 0 5.25h12.75a2.625 2.625 0 0 0 0-5.25H5.625ZM3.75 11.25a.75.75 0 0 0 0 1.5h16.5a.75.75 0 0 0 0-1.5H3.75ZM3 15.75a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75ZM3.75 18.75a.75.75 0 0 0 0 1.5h16.5a.75.75 0 0 0 0-1.5H3.75Z" />
-          </svg>
-          Library
-        </Link>
-        <Link to="/recordings" className="nav-item">
-          <Icon path={mdiRecord} className="size-4" />
-          Recordings
-        </Link>
-        <Link to="/map" className="nav-item">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="size-4"
-          >
-            <path
-              fillRule="evenodd"
-              d="M8.161 2.58a1.875 1.875 0 0 1 1.678 0l4.993 2.498c.106.052.23.052.336 0l3.869-1.935A1.875 1.875 0 0 1 21.75 4.82v12.485c0 .71-.401 1.36-1.037 1.677l-4.875 2.437a1.875 1.875 0 0 1-1.676 0l-4.994-2.497a.375.375 0 0 0-.336 0l-3.868 1.935A1.875 1.875 0 0 1 2.25 19.18V6.695c0-.71.401-1.36 1.036-1.677l4.875-2.437ZM9 6a.75.75 0 0 1 .75.75V15a.75.75 0 0 1-1.5 0V6.75A.75.75 0 0 1 9 6Zm6.75 3a.75.75 0 0 0-1.5 0v8.25a.75.75 0 0 0 1.5 0V9Z"
-              clipRule="evenodd"
-            />
-          </svg>
-          Nearby
-        </Link>
-        <Link to="/settings" className="nav-item">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-            className="size-4"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M4.5 12a7.5 7.5 0 0 0 15 0m-15 0a7.5 7.5 0 1 1 15 0m-15 0H3m16.5 0H21m-1.5 0H12m-8.457 3.077 1.41-.513m14.095-5.13 1.41-.513M5.106 17.785l1.15-.964m11.49-9.642 1.149-.964M7.501 19.795l.75-1.3m7.5-12.99.75-1.3m-6.063 16.658.26-1.477m2.605-14.772.26-1.477m0 17.726-.26-1.477M10.698 4.614l-.26-1.477M16.5 19.794l-.75-1.299M7.5 4.205 12 12m6.894 5.785-1.149-.964M6.256 7.178l-1.15-.964m15.352 8.864-1.41-.513M4.954 9.435l-1.41-.514M12.002 12l-3.75 6.495"
-            />
-          </svg>
-          Settings
-        </Link>
-      </div>
-      <div className="navbar-right">
+            <span>Settings</span>
+          </button>
+        </div>
+      )}
+      <div className="titlebar">
         <button className="titlebar-item" onClick={handleMinimize} aria-label="Minimize window">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -145,7 +199,7 @@ function Navbar() {
           </svg>
         </button>
       </div>
-    </div>
+    </>
   )
 }
 

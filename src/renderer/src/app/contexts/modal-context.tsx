@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback } from 'react'
 import { Station } from 'radio-browser-api'
 import { ModalContextValue, ModalConfig, ModalState, ModalType } from '../types/modal'
+import { SubsonicSong } from '../../../../types/subsonic'
 
 const ModalContext = createContext<ModalContextValue | undefined>(undefined)
 
@@ -92,10 +93,10 @@ export const ModalProvider: React.FC<ModalProviderProps> = ({ children }: ModalP
   )
 
   const openPlaylistModal = useCallback(
-    (station: Station): string => {
+    (song: SubsonicSong): string => {
       return openModal({
         type: 'add-to-playlist',
-        props: { station }
+        props: { song }
       })
     },
     [openModal]

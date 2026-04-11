@@ -1,274 +1,141 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { getItem, setItem, STORES } from '../lib/indexeddb'
-import { Station } from 'radio-browser-api'
-
-export interface Playlist {
-  id: string
-  name: string
-  description?: string
-  icon?: string // emoji or icon name
-  color?: string // hex color for the playlist
-  stations: Station[]
-  createdAt: string
-  updatedAt: string
-}
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { SubsonicPlaylist, SubsonicSong } from '../../../../types/subsonic'
 
 interface PlaylistsContextType {
-  playlists: Playlist[]
-  createPlaylist: (
-    name: string,
-    options?: { description?: string; icon?: string; color?: string }
-  ) => Playlist
-  updatePlaylist: (id: string, updates: Partial<Omit<Playlist, 'id' | 'createdAt'>>) => void
-  deletePlaylist: (id: string) => void
-  addStationToPlaylist: (playlistId: string, station: Station) => void
-  removeStationFromPlaylist: (playlistId: string, stationUrl: string) => void
-  moveStationInPlaylist: (playlistId: string, fromIndex: number, toIndex: number) => void
-  isStationInPlaylist: (playlistId: string, stationUrl: string) => boolean
-  getPlaylistsForStation: (stationUrl: string) => Playlist[]
-  duplicatePlaylist: (id: string, newName?: string) => Playlist | null
-  reorderPlaylists: (fromIndex: number, toIndex: number) => void
-  importPlaylists: (playlists: Playlist[]) => void
-  exportPlaylists: () => Playlist[]
+  playlists: SubsonicPlaylist[]
+  loading: boolean
+  refreshPlaylists: () => Promise<void>
+  createPlaylist: (name: string, songIds?: string[]) => Promise<void>
+  deletePlaylist: (playlistId: string) => Promise<void>
+  updatePlaylist: (playlistId: string, name?: string, comment?: string) => Promise<void>
+  addSongToPlaylist: (playlistId: string, songId: string) => Promise<void>
+  removeSongFromPlaylist: (playlistId: string, songId: string) => Promise<void>
+  isSongInPlaylist: (playlistId: string, songId: string) => Promise<boolean>
 }
 
 const PlaylistsContext = createContext<PlaylistsContextType | undefined>(undefined)
 
-const STORAGE_KEY = 'user-playlists'
+export const PlaylistsProvider = ({ children }: { children: ReactNode }) => {
+  const [playlists, setPlaylists] = useState<SubsonicPlaylist[]>([])
+  const [loading, setLoading] = useState(false)
 
-// Generate a unique ID
-const generateId = (): string => {
-  return `playlist_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
-}
+  const refreshPlaylists = useCallback(async () => {
+    setLoading(true)
+    try {
+      const status = await window.api.subsonic.getCredentialsStatus()
+      if (!status.configured) {
+        setPlaylists([])
+        return
+      }
 
-// Default colors for playlists
-const DEFAULT_COLORS = [
-  '#22c55e', // green
-  '#3b82f6', // blue
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#f97316' // orange
-]
+      const result = await window.api.subsonic.getPlaylists()
+      if (result.success && Array.isArray(result.data)) {
+        setPlaylists(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch Subsonic playlists:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-// Default icons (emojis)
-const DEFAULT_ICONS = ['🎵', '🎧', '📻', '🎶', '🎤', '🎸', '🎹', '🎺']
+  const createPlaylist = async (name: string, songIds: string[] = []) => {
+    const result = await window.api.subsonic.createPlaylist(name, songIds)
+    if (result.success) {
+      await refreshPlaylists()
+    } else {
+      throw new Error(result.error || 'Failed to create playlist')
+    }
+  }
 
-interface PlaylistsProviderProps {
-  children: React.ReactNode
-}
+  const deletePlaylist = async (playlistId: string) => {
+    const result = await window.api.subsonic.deletePlaylist(playlistId)
+    if (result.success) {
+      await refreshPlaylists()
+    } else {
+      throw new Error(result.error || 'Failed to delete playlist')
+    }
+  }
 
-export const PlaylistsProvider: React.FC<PlaylistsProviderProps> = ({
-  children
-}: PlaylistsProviderProps) => {
-  const [playlists, setPlaylists] = useState<Playlist[]>([])
-  const [isInitialized, setIsInitialized] = useState(false)
+  const updatePlaylist = async (playlistId: string, name?: string, comment?: string) => {
+    const result = await window.api.subsonic.updatePlaylist(playlistId, name, comment)
+    if (result.success) {
+      await refreshPlaylists()
+    } else {
+      throw new Error(result.error || 'Failed to update playlist')
+    }
+  }
 
-  // Load playlists from IndexedDB on mount
-  useEffect(() => {
-    const loadPlaylists = async () => {
-      try {
-        const stored = await getItem<Playlist[]>(STORES.SETTINGS, STORAGE_KEY)
-        if (stored && Array.isArray(stored)) {
-          setPlaylists(stored)
-        }
-      } catch (error) {
-        console.error('Failed to load playlists from IndexedDB:', error)
-      } finally {
-        setIsInitialized(true)
+  const addSongToPlaylist = async (playlistId: string, songId: string) => {
+    const getRes = await window.api.subsonic.getPlaylist(playlistId)
+    if (getRes.success && getRes.data) {
+      const currentPlaylist = getRes.data as SubsonicPlaylist
+      const currentSongs = currentPlaylist.entry || []
+      const songIds = [...currentSongs.map((s: SubsonicSong) => s.id), songId]
+
+      const res = await window.api.subsonic.replacePlaylistSongs(playlistId, songIds)
+      if (res.success) {
+        await refreshPlaylists()
+      } else {
+        throw new Error(res.error || 'Failed to add song to playlist')
       }
     }
+  }
 
-    loadPlaylists()
-  }, [])
+  const removeSongFromPlaylist = async (playlistId: string, songId: string) => {
+    const getRes = await window.api.subsonic.getPlaylist(playlistId)
+    if (getRes.success && getRes.data) {
+      const currentPlaylist = getRes.data as SubsonicPlaylist
+      const currentSongs = currentPlaylist.entry || []
+      const songIds = currentSongs
+        .map((s: SubsonicSong) => s.id)
+        .filter((id: string) => id !== songId)
 
-  // Save playlists to IndexedDB whenever they change
-  useEffect(() => {
-    if (isInitialized) {
-      setItem(STORES.SETTINGS, STORAGE_KEY, playlists).catch((error) => {
-        console.error('Failed to save playlists to IndexedDB:', error)
-      })
+      const res = await window.api.subsonic.replacePlaylistSongs(playlistId, songIds)
+      if (res.success) {
+        await refreshPlaylists()
+      } else {
+        throw new Error(res.error || 'Failed to remove song from playlist')
+      }
     }
-  }, [playlists, isInitialized])
+  }
 
-  const createPlaylist = useCallback(
-    (name: string, options?: { description?: string; icon?: string; color?: string }): Playlist => {
-      const now = new Date().toISOString()
-      const playlistIndex = playlists.length
+  const isSongInPlaylist = async (playlistId: string, songId: string): Promise<boolean> => {
+    const getRes = await window.api.subsonic.getPlaylist(playlistId)
+    if (getRes.success && getRes.data) {
+      const currentPlaylist = getRes.data as SubsonicPlaylist
+      const currentSongs = currentPlaylist.entry || []
+      return currentSongs.some((s: SubsonicSong) => s.id === songId)
+    }
+    return false
+  }
 
-      const newPlaylist: Playlist = {
-        id: generateId(),
-        name: name.trim() || 'Untitled Playlist',
-        description: options?.description,
-        icon: options?.icon || DEFAULT_ICONS[playlistIndex % DEFAULT_ICONS.length],
-        color: options?.color || DEFAULT_COLORS[playlistIndex % DEFAULT_COLORS.length],
-        stations: [],
-        createdAt: now,
-        updatedAt: now
+  useEffect(() => {
+    refreshPlaylists()
+
+    const unsubscribe = window.api.subsonic.onCredentialsChanged((status) => {
+      if (status.configured) {
+        refreshPlaylists()
+      } else {
+        setPlaylists([])
       }
-
-      setPlaylists((prev) => [...prev, newPlaylist])
-      return newPlaylist
-    },
-    [playlists.length]
-  )
-
-  const updatePlaylist = useCallback(
-    (id: string, updates: Partial<Omit<Playlist, 'id' | 'createdAt'>>) => {
-      setPlaylists((prev) =>
-        prev.map((playlist) =>
-          playlist.id === id
-            ? {
-                ...playlist,
-                ...updates,
-                updatedAt: new Date().toISOString()
-              }
-            : playlist
-        )
-      )
-    },
-    []
-  )
-
-  const deletePlaylist = useCallback((id: string) => {
-    setPlaylists((prev) => prev.filter((playlist) => playlist.id !== id))
-  }, [])
-
-  const addStationToPlaylist = useCallback((playlistId: string, station: Station) => {
-    setPlaylists((prev) =>
-      prev.map((playlist) => {
-        if (playlist.id !== playlistId) return playlist
-
-        // Check if station already exists
-        if (playlist.stations.some((s) => s.url === station.url)) {
-          return playlist
-        }
-
-        return {
-          ...playlist,
-          stations: [...playlist.stations, station],
-          updatedAt: new Date().toISOString()
-        }
-      })
-    )
-  }, [])
-
-  const removeStationFromPlaylist = useCallback((playlistId: string, stationUrl: string) => {
-    setPlaylists((prev) =>
-      prev.map((playlist) => {
-        if (playlist.id !== playlistId) return playlist
-
-        return {
-          ...playlist,
-          stations: playlist.stations.filter((s) => s.url !== stationUrl),
-          updatedAt: new Date().toISOString()
-        }
-      })
-    )
-  }, [])
-
-  const moveStationInPlaylist = useCallback(
-    (playlistId: string, fromIndex: number, toIndex: number) => {
-      setPlaylists((prev) =>
-        prev.map((playlist) => {
-          if (playlist.id !== playlistId) return playlist
-
-          const stations = [...playlist.stations]
-          const [removed] = stations.splice(fromIndex, 1)
-          stations.splice(toIndex, 0, removed)
-
-          return {
-            ...playlist,
-            stations,
-            updatedAt: new Date().toISOString()
-          }
-        })
-      )
-    },
-    []
-  )
-
-  const isStationInPlaylist = useCallback(
-    (playlistId: string, stationUrl: string): boolean => {
-      const playlist = playlists.find((p) => p.id === playlistId)
-      if (!playlist) return false
-      return playlist.stations.some((s) => s.url === stationUrl)
-    },
-    [playlists]
-  )
-
-  const getPlaylistsForStation = useCallback(
-    (stationUrl: string): Playlist[] => {
-      return playlists.filter((playlist) => playlist.stations.some((s) => s.url === stationUrl))
-    },
-    [playlists]
-  )
-
-  const duplicatePlaylist = useCallback(
-    (id: string, newName?: string): Playlist | null => {
-      const original = playlists.find((p) => p.id === id)
-      if (!original) return null
-
-      const now = new Date().toISOString()
-      const duplicated: Playlist = {
-        ...original,
-        id: generateId(),
-        name: newName || `${original.name} (Copy)`,
-        createdAt: now,
-        updatedAt: now
-      }
-
-      setPlaylists((prev) => [...prev, duplicated])
-      return duplicated
-    },
-    [playlists]
-  )
-
-  const reorderPlaylists = useCallback((fromIndex: number, toIndex: number) => {
-    setPlaylists((prev) => {
-      const newPlaylists = [...prev]
-      const [removed] = newPlaylists.splice(fromIndex, 1)
-      newPlaylists.splice(toIndex, 0, removed)
-      return newPlaylists
     })
-  }, [])
 
-  const importPlaylists = useCallback((importedPlaylists: Playlist[]) => {
-    const now = new Date().toISOString()
-
-    // Regenerate IDs to avoid conflicts
-    const processedPlaylists = importedPlaylists.map((playlist) => ({
-      ...playlist,
-      id: generateId(),
-      createdAt: playlist.createdAt || now,
-      updatedAt: now
-    }))
-
-    setPlaylists((prev) => [...prev, ...processedPlaylists])
-  }, [])
-
-  const exportPlaylists = useCallback((): Playlist[] => {
-    return playlists
-  }, [playlists])
+    return () => unsubscribe()
+  }, [refreshPlaylists])
 
   return (
     <PlaylistsContext.Provider
       value={{
         playlists,
+        loading,
+        refreshPlaylists,
         createPlaylist,
-        updatePlaylist,
         deletePlaylist,
-        addStationToPlaylist,
-        removeStationFromPlaylist,
-        moveStationInPlaylist,
-        isStationInPlaylist,
-        getPlaylistsForStation,
-        duplicatePlaylist,
-        reorderPlaylists,
-        importPlaylists,
-        exportPlaylists
+        updatePlaylist,
+        addSongToPlaylist,
+        removeSongFromPlaylist,
+        isSongInPlaylist
       }}
     >
       {children}
@@ -276,13 +143,10 @@ export const PlaylistsProvider: React.FC<PlaylistsProviderProps> = ({
   )
 }
 
-export const usePlaylists = (): PlaylistsContextType => {
+export const usePlaylists = () => {
   const context = useContext(PlaylistsContext)
   if (!context) {
     throw new Error('usePlaylists must be used within PlaylistsProvider')
   }
   return context
 }
-
-// Export constants for use in other components
-export { DEFAULT_COLORS, DEFAULT_ICONS }

@@ -105,7 +105,13 @@ export interface RecorderAPI {
 export class RecorderError extends Error {
   constructor(
     message: string,
-    public code: 'NETWORK_ERROR' | 'INVALID_URL' | 'RECORDING_FAILED' | 'NOT_FOUND' | 'IPC_ERROR' | 'UNKNOWN',
+    public code:
+      | 'NETWORK_ERROR'
+      | 'INVALID_URL'
+      | 'RECORDING_FAILED'
+      | 'NOT_FOUND'
+      | 'IPC_ERROR'
+      | 'UNKNOWN',
     public station?: Station
   ) {
     super(message)

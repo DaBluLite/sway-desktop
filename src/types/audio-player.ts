@@ -1,18 +1,39 @@
 import { Station } from 'radio-browser-api'
+import { SubsonicSong } from './subsonic'
 
 // Main Process Audio Player State
 export interface AudioPlayerState {
   isPlaying: boolean
   currentStation: Station | null
+  currentSong: SubsonicSong | null
   volume: number
   isMuted: boolean
   isLoading: boolean
   error: string | null
+  // Progress tracking for non-radio content
+  currentTime: number // in seconds
+  duration: number | null // in seconds, null for live streams/radio
+  isSeekable: boolean // false for live radio streams
+  // Audio settings
+  gaplessEnabled: boolean
+  exclusiveEnabled: boolean
+  bitPerfectEnabled: boolean
+  audioDevice: string | null
+}
+
+export interface AudioDevice {
+  name: string
+  description: string
 }
 
 // IPC Command Types
 export interface PlayStationCommand {
   station: Station
+}
+
+export interface PlaySongCommand {
+  song: SubsonicSong
+  streamUrl: string
 }
 
 export interface SetVolumeCommand {
@@ -31,6 +52,21 @@ export interface PauseCommand {
   // No payload needed
 }
 
+export interface ResumeCommand {
+  // No payload needed
+}
+
+export interface SeekCommand {
+  position: number // in seconds
+}
+
+export interface UpdateAudioSettingsCommand {
+  gaplessEnabled?: boolean
+  exclusiveEnabled?: boolean
+  bitPerfectEnabled?: boolean
+  audioDevice?: string | null
+}
+
 // IPC Response Types
 export interface AudioPlayerCommandResult {
   success: boolean
@@ -41,7 +77,7 @@ export interface AudioPlayerCommandResult {
 // State change event payload
 export interface AudioPlayerStateChanged {
   state: AudioPlayerState
-  source: 'command' | 'renderer-event' | 'error' | 'retry'
+  source: 'command' | 'renderer-event' | 'error' | 'retry' | 'ended'
 }
 
 // Renderer to Main Process Events (for HTMLAudioElement event reporting)
@@ -55,6 +91,7 @@ export interface RendererAudioEvent {
 // Persistence State (subset of full state)
 export interface PersistedAudioState {
   currentStation: Station | null
+  currentSong: SubsonicSong | null
   volume: number
   isMuted: boolean
   // Note: isPlaying and isLoading are intentionally not persisted
@@ -65,11 +102,16 @@ export interface PersistedAudioState {
 export const AudioPlayerChannels = {
   // Commands (bidirectional - renderer -> main -> response)
   PLAY_STATION: 'audio-player:play-station',
+  PLAY_SONG: 'audio-player:play-song',
   PAUSE: 'audio-player:pause',
+  RESUME: 'audio-player:resume',
   STOP: 'audio-player:stop',
   SET_VOLUME: 'audio-player:set-volume',
   TOGGLE_MUTE: 'audio-player:toggle-mute',
+  SEEK: 'audio-player:seek',
   GET_STATE: 'audio-player:get-state',
+  UPDATE_SETTINGS: 'audio-player:update-settings',
+  GET_DEVICES: 'audio-player:get-devices',
 
   // Events (one-way - main -> renderer)
   STATE_CHANGED: 'audio-player:state-changed',
@@ -89,10 +131,15 @@ export interface IAudioPlayerService {
 
   // Playback controls
   playStation(station: Station): Promise<AudioPlayerCommandResult>
+  playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult>
   pause(): Promise<AudioPlayerCommandResult>
+  resume(): Promise<AudioPlayerCommandResult>
   stop(): Promise<AudioPlayerCommandResult>
   setVolume(volume: number): Promise<AudioPlayerCommandResult>
   toggleMute(): Promise<AudioPlayerCommandResult>
+  seek(position: number): Promise<AudioPlayerCommandResult>
+  updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult>
+  getAudioDevices(): Promise<AudioDevice[]>
 
   // Window management
   registerWindow(windowId: number): void
@@ -114,10 +161,15 @@ export interface IAudioPlayerService {
 export interface AudioPlayerAPI {
   // Commands
   playStation(station: Station): Promise<AudioPlayerCommandResult>
+  playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult>
   pause(): Promise<AudioPlayerCommandResult>
+  resume(): Promise<AudioPlayerCommandResult>
   stop(): Promise<AudioPlayerCommandResult>
   setVolume(volume: number): Promise<AudioPlayerCommandResult>
   toggleMute(): Promise<AudioPlayerCommandResult>
+  seek(position: number): Promise<AudioPlayerCommandResult>
+  updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult>
+  getAudioDevices(): Promise<AudioDevice[]>
   getState(): Promise<AudioPlayerState>
 
   // Event listeners
@@ -162,8 +214,16 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
 export const DEFAULT_AUDIO_STATE: AudioPlayerState = {
   isPlaying: false,
   currentStation: null,
+  currentSong: null,
   volume: 0.7,
   isMuted: false,
   isLoading: false,
-  error: null
+  error: null,
+  currentTime: 0,
+  duration: null,
+  isSeekable: false,
+  gaplessEnabled: true,
+  exclusiveEnabled: false,
+  bitPerfectEnabled: false,
+  audioDevice: null
 }

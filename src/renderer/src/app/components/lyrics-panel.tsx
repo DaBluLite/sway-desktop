@@ -1,33 +1,30 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Icon } from '@mdi/react'
-import {
-  mdiMusicNote,
-  mdiLoading,
-  mdiChevronUp,
-  mdiChevronDown,
-  mdiImageOff,
-  mdiMusicNoteOff
-} from '@mdi/js'
-import { fetchTrackDataCached, TrackInfo, LyricsResult, AlbumArtResult } from '../lib/lyrics'
+import { mdiLoading, mdiMusicNoteOff } from '@mdi/js'
+import { fetchTrackDataCached, TrackInfo, LyricsResult } from '../lib/lyrics'
+import { SubsonicSong } from '../../../../types/subsonic'
+import { useAudioPlayer } from '../contexts/audio-player-context'
 
 interface LyricsPanelProps {
   streamTitle: string | null
   stationFavicon?: string
+  song?: SubsonicSong | null
 }
 
 export const LyricsPanel: React.FC<LyricsPanelProps> = ({
   streamTitle,
-  stationFavicon
+  song
 }: LyricsPanelProps) => {
+  const { currentTime, seek, isSeekable } = useAudioPlayer()
   const [track, setTrack] = useState<TrackInfo | null>(null)
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null)
-  const [albumArt, setAlbumArt] = useState<AlbumArtResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(false)
-  const lastStreamTitleRef = useRef<string | null>(null)
+  const lastIdentifierRef = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const lyricsContainerRef = useRef<HTMLDivElement>(null)
+  const activeLyricRef = useRef<HTMLDivElement>(null)
 
-  const fetchData = useCallback(async (title: string) => {
+  const fetchData = useCallback(async (title: string, artist?: string) => {
     // Cancel any in-flight request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -35,13 +32,13 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
     abortControllerRef.current = new AbortController()
 
     try {
-      const result = await fetchTrackDataCached(title)
+      const result = await fetchTrackDataCached(title, artist, title)
+
       // Check if this request was aborted
       if (abortControllerRef.current?.signal.aborted) return
 
       setTrack(result.track)
       setLyrics(result.lyrics)
-      setAlbumArt(result.albumArt)
     } catch (error) {
       // Ignore abort errors
       if (error instanceof Error && error.name === 'AbortError') return
@@ -50,147 +47,119 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
       setIsLoading(false)
     }
   }, [])
-
   useEffect(() => {
-    if (!streamTitle) {
+    const identifier = song ? `song-${song.id}` : streamTitle || null
+
+    if (!identifier) {
       setTrack(null)
       setLyrics(null)
-      setAlbumArt(null)
       setIsLoading(false)
-      lastStreamTitleRef.current = null
+      lastIdentifierRef.current = null
       return
     }
 
-    if (streamTitle === lastStreamTitleRef.current) return
+    if (identifier === lastIdentifierRef.current) return
 
-    lastStreamTitleRef.current = streamTitle
+    lastIdentifierRef.current = identifier
     setIsLoading(true)
     setLyrics(null)
-    setAlbumArt(null)
     setTrack(null)
 
-    fetchData(streamTitle)
+    if (song) {
+      fetchData(song.title, song.artist)
+    } else if (streamTitle) {
+      fetchData(streamTitle)
+    }
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [streamTitle, fetchData])
+  }, [streamTitle, song, fetchData])
 
-  const currentArt = albumArt?.imageUrl || stationFavicon
+  // Scroll to active lyric
+  useEffect(() => {
+    if (activeLyricRef.current && lyricsContainerRef.current) {
+      activeLyricRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      })
+    }
+  }, [currentTime, lyrics?.syncedLyrics])
 
-  if (!streamTitle) {
+  if (!streamTitle && !song) {
     return null
   }
 
+  const activeLyricIndex = lyrics?.syncedLyrics
+    ? lyrics.syncedLyrics.findLastIndex((line) => line.time <= currentTime)
+    : -1
+
   return (
-    <div className="raised-interface-lg rounded-lg overflow-hidden">
-      {/* Header with album art preview */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-3 p-3 active:bg-second-layer-thin-active dark:active:bg-second-layer-thin-active-dark transition"
-      >
-        {/* Album art thumbnail */}
-        <div className="w-16 h-16 rounded-md overflow-hidden raised-interface shrink-0">
+    <div className="raised-interface-lg rounded-lg overflow-hidden flex flex-col h-full max-h-[75vh]">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-black/20">
+        <div className="p-6 pt-4 flex-1 flex flex-col min-h-0">
           {isLoading ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <Icon path={mdiLoading} size={1} spin className="text-zinc-400" />
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <Icon path={mdiLoading} size={2} spin className="text-zinc-500" />
+              <p className="text-zinc-500 text-sm animate-pulse">Searching for lyrics...</p>
             </div>
-          ) : currentArt ? (
-            <img src={currentArt} alt="Album art" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Icon path={mdiImageOff} size={1} className="text-zinc-500" />
+          ) : lyrics?.syncedLyrics && lyrics.syncedLyrics.length > 0 ? (
+            <div
+              ref={lyricsContainerRef}
+              className="overflow-y-auto flex-1 flex flex-col gap-8 py-8 scrollbar-hide"
+            >
+              {lyrics.syncedLyrics.map((line, index) => (
+                <div
+                  key={`${line.time}-${index}`}
+                  ref={index === activeLyricIndex ? activeLyricRef : null}
+                  onClick={() => isSeekable && seek(line.time)}
+                  className={`text-3xl font-black transition-all duration-500 leading-tight tracking-tight ${
+                    index === activeLyricIndex
+                      ? 'text-white scale-105 origin-left'
+                      : index < activeLyricIndex
+                        ? 'text-white/40 hover:text-white/60'
+                        : 'text-white/20 hover:text-white/40'
+                  } ${isSeekable ? 'cursor-pointer' : ''}`}
+                >
+                  {line.text}
+                </div>
+              ))}
+              <div className="h-48 shrink-0" /> {/* Spacer at bottom for better scrolling */}
             </div>
-          )}
-        </div>
-
-        {/* Track info */}
-        <div className="flex-1 text-left min-w-0">
-          {track ? (
-            <>
-              <p className="text-white font-medium truncate">{track.title}</p>
-              <p className="text-zinc-400 text-sm truncate">{track.artist}</p>
-              {albumArt?.album && (
-                <p className="text-zinc-500 text-xs truncate">{albumArt.album}</p>
-              )}
-            </>
-          ) : streamTitle.includes(' - ') ? (
-            <>
-              <p className="text-white font-medium truncate">{streamTitle.split(' - ')[1]}</p>
-              <p className="text-zinc-400 text-sm truncate">{streamTitle.split(' - ')[0]}</p>
-            </>
-          ) : (
-            <p className="text-white font-medium truncate">{streamTitle}</p>
-          )}
-        </div>
-
-        {/* Expand/collapse icon */}
-        <Icon
-          path={isExpanded ? mdiChevronUp : mdiChevronDown}
-          size={1}
-          className="text-zinc-400 shrink-0"
-        />
-      </button>
-
-      {/* Expanded content */}
-      {isExpanded && (
-        <div className="border-t border-subtle">
-          {/* Large album art */}
-          {currentArt && (
-            <div className="p-4 flex justify-center">
-              <img
-                src={currentArt}
-                alt="Album art"
-                className="max-w-64 max-h-64 rounded-lg object-cover shadow-main"
-              />
-            </div>
-          )}
-
-          {/* Track details */}
-          {track && (
-            <div className="px-4 pb-2 text-center">
-              <h3 className="text-xl font-bold text-white">{track.title}</h3>
-              <p className="text-zinc-300">{track.artist}</p>
-              {albumArt?.album && <p className="text-zinc-400 text-sm">{albumArt.album}</p>}
-              {albumArt?.source && (
-                <p className="text-zinc-400 text-xs mt-1">Album art via {albumArt.source}</p>
-              )}
-            </div>
-          )}
-
-          {/* Lyrics */}
-          <div className="p-4 pt-2">
-            <div className="flex items-center gap-2 mb-3">
-              <Icon path={mdiMusicNote} size={0.8} className="text-white" />
-              <span className="text-sm font-medium text-white">Lyrics</span>
-              {lyrics?.source && <span className="text-xs text-zinc-400">via {lyrics.source}</span>}
-            </div>
-
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Icon path={mdiLoading} size={1.5} spin className="text-zinc-400" />
+          ) : lyrics?.lyrics ? (
+            <div className="overflow-y-auto flex-1 py-4 scrollbar-hide">
+              <div className="text-zinc-200 text-xl whitespace-pre-wrap font-sans font-medium leading-relaxed text-center px-4">
+                {lyrics.lyrics}
               </div>
-            ) : lyrics?.lyrics ? (
-              <div className="raised-interface-lg rounded-lg p-4 max-h-80 overflow-y-auto">
-                <pre className="text-zinc-300 text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                  {lyrics.lyrics}
-                </pre>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 gap-4">
+              <div className="w-16 h-16 rounded-full bg-zinc-800/50 flex items-center justify-center">
+                <Icon path={mdiMusicNoteOff} size={1.5} className="opacity-50" />
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-zinc-400">
-                <Icon path={mdiMusicNoteOff} size={2} className="mb-2 opacity-50" />
-                <p className="text-sm">
-                  {!track
-                    ? 'Could not parse track information'
-                    : lyrics?.error || 'Lyrics not available'}
+              <div className="text-center">
+                <p className="font-medium text-zinc-400">
+                  {!(track || song)
+                    ? 'No track information found'
+                    : lyrics?.error === 'Not found'
+                      ? 'Lyrics not found'
+                      : lyrics?.error || 'Lyrics not available'}
+                </p>
+                <p className="text-xs text-zinc-600 mt-1">
+                  Try checking the song title or artist name
                 </p>
               </div>
+            </div>
+          )}
+          <div className="flex items-center justify-end gap-2 mt-4 shrink-0">
+            {lyrics?.source && (
+              <span className="text-xs text-zinc-500 ml-auto">Source: {lyrics.source}</span>
             )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

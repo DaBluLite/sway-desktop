@@ -1,5 +1,11 @@
+export interface LyricsLine {
+  time: number // in seconds
+  text: string
+}
+
 export interface LyricsResult {
   lyrics: string | null
+  syncedLyrics: LyricsLine[] | null
   source: string | null
   error?: string
 }
@@ -49,11 +55,110 @@ export function parseTrackInfo(streamTitle: string): TrackInfo | null {
 }
 
 /**
+ * Parse LRC format lyrics into timed lines
+ */
+export function parseLRC(lrc: string): LyricsLine[] {
+  if (!lrc) return []
+  const lines = lrc.split('\n')
+  const result: LyricsLine[] = []
+  // Robust regex for [mm:ss.xx] or [mm:ss] or [m:ss] etc.
+  // Supports multiple time tags per line: [00:01.00][00:10.00]Lyrics
+  const timeRegex = /\[(\d+):(\d+(?:\.\d+)?)\]/g
+
+  for (const line of lines) {
+    const timeTags = line.match(timeRegex)
+    if (timeTags) {
+      const text = line.replace(timeRegex, '').trim()
+      // Allow empty text for silence/breaks
+      for (const tag of timeTags) {
+        const match = tag.match(/\[(\d+):(\d+(?:\.\d+)?)\]/)
+        if (match) {
+          const minutes = parseInt(match[1], 10)
+          const seconds = parseFloat(match[2])
+          const time = minutes * 60 + seconds
+          result.push({ time, text: text || '...' }) // Use ... for silence
+        }
+      }
+    }
+  }
+
+  return result.sort((a, b) => a.time - b.time)
+}
+
+/**
+ * Fetch lyrics from LRCLIB (supports synced lyrics)
+ */
+export async function fetchLyricsLRCLIB(artist: string, title: string): Promise<LyricsResult> {
+  try {
+    // Clean up artist and title for better matching
+    const cleanArtist = artist.replace(/\s*\(.*?\)\s*/g, '').trim()
+    const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, '').trim()
+
+    const response = await fetch(
+      `https://lrclib.net/api/get?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTitle)}`
+    )
+
+    if (!response.ok) {
+      // Try again with full names if cleanup didn't work (LRCLIB can be picky sometimes)
+      const responseFull = await fetch(
+        `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`
+      )
+      if (!responseFull.ok) {
+        return { lyrics: null, syncedLyrics: null, source: null, error: 'Not found' }
+      }
+      // Use the full name response if successful
+      const data = await responseFull.json()
+      return processLRCLIBData(data)
+    }
+
+    const data = await response.json()
+    console.log(data)
+    return processLRCLIBData(data)
+  } catch (error) {
+    console.error('LRCLIB fetch error:', error)
+    return { lyrics: null, syncedLyrics: null, source: null, error: 'Fetch failed' }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function processLRCLIBData(data: any): LyricsResult {
+  if (data.instrumental) {
+    return {
+      lyrics: '[Instrumental]',
+      syncedLyrics: null,
+      source: 'LRCLIB'
+    }
+  }
+
+  if (data.syncedLyrics) {
+    const parsed = parseLRC(data.syncedLyrics)
+    if (parsed.length > 0) {
+      return {
+        lyrics: data.plainLyrics || null,
+        syncedLyrics: parsed,
+        source: 'LRCLIB (synced)'
+      }
+    }
+  }
+
+  return {
+    lyrics: data.plainLyrics || null,
+    syncedLyrics: null,
+    source: 'LRCLIB'
+  }
+}
+/**
  * Fetch lyrics from lyrics.ovh API (free, no API key required)
  */
 export async function fetchLyrics(artist: string, title: string): Promise<LyricsResult> {
   try {
-    // Clean up artist and title for better matching
+    // Try LRCLIB first for better metadata and synced lyrics
+    const lrclibResult = await fetchLyricsLRCLIB(artist, title)
+    if (lrclibResult.lyrics || lrclibResult.syncedLyrics) {
+      return lrclibResult
+    }
+
+    // Clean up artist and title for better matching with lyrics.ovh
     const cleanArtist = artist.replace(/\s*\(.*?\)\s*/g, '').trim()
     const cleanTitle = title.replace(/\s*\(.*?\)\s*/g, '').trim()
 
@@ -63,19 +168,20 @@ export async function fetchLyrics(artist: string, title: string): Promise<Lyrics
 
     if (!response.ok) {
       if (response.status === 404) {
-        return { lyrics: null, source: null, error: 'Lyrics not found' }
+        return { lyrics: null, syncedLyrics: null, source: null, error: 'Lyrics not found' }
       }
-      return { lyrics: null, source: null, error: `HTTP ${response.status}` }
+      return { lyrics: null, syncedLyrics: null, source: null, error: `HTTP ${response.status}` }
     }
 
     const data = await response.json()
     return {
       lyrics: data.lyrics || null,
+      syncedLyrics: null,
       source: 'lyrics.ovh'
     }
   } catch (error) {
     console.error('Failed to fetch lyrics:', error)
-    return { lyrics: null, source: null, error: 'Failed to fetch lyrics' }
+    return { lyrics: null, syncedLyrics: null, source: null, error: 'Failed to fetch lyrics' }
   }
 }
 
@@ -177,34 +283,47 @@ export async function fetchAlbumArtDeezer(artist: string, title: string): Promis
 /**
  * Fetch both lyrics and album art with fallbacks
  */
-export async function fetchTrackData(streamTitle: string): Promise<{
+export async function fetchTrackData(
+  streamTitle: string,
+  providedArtist?: string,
+  providedTitle?: string
+): Promise<{
   track: TrackInfo | null
   lyrics: LyricsResult
   albumArt: AlbumArtResult
 }> {
-  const track = parseTrackInfo(streamTitle)
+  let track: TrackInfo | null = null
+
+  if (providedArtist && providedTitle) {
+    track = { artist: providedArtist, title: providedTitle }
+  } else {
+    track = parseTrackInfo(streamTitle)
+  }
 
   if (!track) {
     return {
       track: null,
-      lyrics: { lyrics: null, source: null },
+      lyrics: { lyrics: null, syncedLyrics: null, source: null },
       albumArt: { imageUrl: null, album: null, artist: null, source: null }
     }
   }
 
   // Fetch lyrics and album art in parallel
-  const [lyrics, albumArt] = await Promise.all([
+  const [lyricsResult, albumArtResult] = await Promise.all([
     fetchLyrics(track.artist, track.title),
     fetchAlbumArt(track.artist, track.title)
   ])
 
   // If iTunes didn't find album art, try Deezer as fallback
-  let finalAlbumArt = albumArt
-  if (!albumArt.imageUrl) {
-    finalAlbumArt = await fetchAlbumArtDeezer(track.artist, track.title)
+  let finalAlbumArt = albumArtResult
+  if (!albumArtResult.imageUrl) {
+    const deezerArt = await fetchAlbumArtDeezer(track.artist, track.title)
+    if (deezerArt.imageUrl) {
+      finalAlbumArt = deezerArt
+    }
   }
 
-  return { track, lyrics, albumArt: finalAlbumArt }
+  return { track, lyrics: lyricsResult, albumArt: finalAlbumArt }
 }
 
 // Cache for track data to avoid repeated API calls
@@ -223,12 +342,17 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
 /**
  * Fetch track data with caching
  */
-export async function fetchTrackDataCached(streamTitle: string): Promise<{
+export async function fetchTrackDataCached(
+  streamTitle: string,
+  artist?: string,
+  title?: string
+): Promise<{
   track: TrackInfo | null
   lyrics: LyricsResult
   albumArt: AlbumArtResult
 }> {
-  const cached = trackCache.get(streamTitle)
+  const cacheKey = artist && title ? `manual-${artist}-${title}` : streamTitle
+  const cached = trackCache.get(cacheKey)
 
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return {
@@ -238,9 +362,9 @@ export async function fetchTrackDataCached(streamTitle: string): Promise<{
     }
   }
 
-  const result = await fetchTrackData(streamTitle)
+  const result = await fetchTrackData(streamTitle, artist, title)
 
-  trackCache.set(streamTitle, {
+  trackCache.set(cacheKey, {
     ...result,
     timestamp: Date.now()
   })

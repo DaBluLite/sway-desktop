@@ -94,3 +94,7 @@
 @utility use-theme-text {
   @apply text-black dark:text-white;
 }
+
+@utility text-input {
+  @apply use-transition px-3 py-2 bg-second-layer-thin dark:bg-second-layer-thin-dark focus:bg-second-layer-thin-active focus:dark:bg-second-layer-thin-active-dark border border-faint shadow-glass rounded-md outline-none focus:border-subtle;
+}

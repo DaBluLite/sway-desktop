@@ -140,7 +140,7 @@ function ActiveRecordings() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="flex min-h-screen w-full justify-start font-sans flex-col p-12 pt-20">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

@@ -7,7 +7,6 @@ import { ShareStationModal } from './share-station-modal'
 import { AddToPlaylistModal } from './add-to-playlist-modal'
 import { SimilarStationsModal } from './similar-stations-modal'
 import { AlarmModal } from './alarm-modal'
-import { Recorder } from './recorder'
 import { ImportExportModal } from './import-export-modal'
 
 const ModalWrapper: React.FC = () => {
@@ -29,16 +28,13 @@ const ModalWrapper: React.FC = () => {
 
       case 'sleep-timer':
         return <SleepTimerModal key={modal.id} onClose={handleClose} />
-
       case 'share-station':
         return (
           <ShareStationModal key={modal.id} station={modal.props?.station} onClose={handleClose} />
         )
 
       case 'add-to-playlist':
-        return (
-          <AddToPlaylistModal key={modal.id} station={modal.props?.station} onClose={handleClose} />
-        )
+        return <AddToPlaylistModal key={modal.id} song={modal.props?.song} onClose={handleClose} />
 
       case 'similar-stations':
         return (
@@ -51,10 +47,6 @@ const ModalWrapper: React.FC = () => {
 
       case 'alarm':
         return <AlarmModal key={modal.id} onClose={handleClose} />
-
-      case 'recorder':
-        return <Recorder key={modal.id} onClose={handleClose} />
-
       case 'import-export':
         return <ImportExportModal key={modal.id} onClose={handleClose} />
 

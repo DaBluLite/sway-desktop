@@ -1,26 +1,26 @@
 import { app, shell, BrowserWindow, ipcMain, globalShortcut, screen } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { Station } from 'radio-browser-api'
 import icon from '../../resources/icon.png?asset'
+import { SubsonicService } from './services/subsonic-service'
 import { AudioPlayerService } from './services/audio-player-service'
-import { RecorderService } from './services/recorder-service'
+import { SubsonicChannels } from '../types/subsonic'
 import { AudioPlayerChannels } from '../types/audio-player'
-import { RecorderChannels } from '../types/recorder'
 
 // Global service instances
+let subsonicService: SubsonicService | null = null
 let audioPlayerService: AudioPlayerService | null = null
-let recorderService: RecorderService | null = null
 
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1280,
+    height: 700,
     show: false,
     autoHideMenuBar: true,
     frame: false,
     transparent: true,
+    title: 'Sway Music',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -30,12 +30,11 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
-    // Register window with services
+    if (subsonicService) {
+      subsonicService.registerWindow(mainWindow.id)
+    }
     if (audioPlayerService) {
       audioPlayerService.registerWindow(mainWindow.id)
-    }
-    if (recorderService) {
-      recorderService.registerWindow(mainWindow.id)
     }
   })
 
@@ -71,11 +70,11 @@ function createWindow(): void {
 
   // Unregister window on close
   mainWindow.on('closed', () => {
+    if (subsonicService) {
+      subsonicService.unregisterWindow(mainWindow.id)
+    }
     if (audioPlayerService) {
       audioPlayerService.unregisterWindow(mainWindow.id)
-    }
-    if (recorderService) {
-      recorderService.unregisterWindow(mainWindow.id)
     }
   })
 
@@ -112,21 +111,20 @@ function createSecondWindow(): void {
 
   secondWindow.on('ready-to-show', () => {
     secondWindow?.show()
-    // Register second window with services
+    if (subsonicService && secondWindow) {
+      subsonicService.registerWindow(secondWindow.id)
+    }
     if (audioPlayerService && secondWindow) {
       audioPlayerService.registerWindow(secondWindow.id)
-    }
-    if (recorderService && secondWindow) {
-      recorderService.registerWindow(secondWindow.id)
     }
   })
 
   secondWindow.on('closed', () => {
+    if (subsonicService && secondWindow) {
+      subsonicService.unregisterWindow(secondWindow.id)
+    }
     if (audioPlayerService && secondWindow) {
       audioPlayerService.unregisterWindow(secondWindow.id)
-    }
-    if (recorderService && secondWindow) {
-      recorderService.unregisterWindow(secondWindow.id)
     }
     secondWindow = null
   })
@@ -143,9 +141,8 @@ function createSecondWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Initialize services
+  subsonicService = new SubsonicService()
   audioPlayerService = new AudioPlayerService()
-  recorderService = new RecorderService()
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
@@ -223,96 +220,243 @@ app.whenReady().then(() => {
     }
   })
 
-  // Audio Player IPC Handlers
+  // Audio Player Service IPC Handlers
   ipcMain.handle(AudioPlayerChannels.PLAY_STATION, async (_event, station) => {
-    return (
-      audioPlayerService?.playStation(station) ?? {
-        success: false,
-        error: 'Service not initialized'
-      }
-    )
+    return await audioPlayerService?.playStation(station)
   })
 
-  ipcMain.handle(AudioPlayerChannels.PAUSE, async (_event) => {
-    return audioPlayerService?.pause() ?? { success: false, error: 'Service not initialized' }
+  ipcMain.handle(AudioPlayerChannels.PLAY_SONG, async (_event, song, streamUrl) => {
+    return await audioPlayerService?.playSong(song, streamUrl)
   })
 
-  ipcMain.handle(AudioPlayerChannels.STOP, async (_event) => {
-    return audioPlayerService?.stop() ?? { success: false, error: 'Service not initialized' }
+  ipcMain.handle(AudioPlayerChannels.PAUSE, async () => {
+    return await audioPlayerService?.pause()
+  })
+
+  ipcMain.handle(AudioPlayerChannels.RESUME, async () => {
+    return await audioPlayerService?.resume()
+  })
+
+  ipcMain.handle(AudioPlayerChannels.STOP, async () => {
+    return await audioPlayerService?.stop()
   })
 
   ipcMain.handle(AudioPlayerChannels.SET_VOLUME, async (_event, volume) => {
-    return (
-      audioPlayerService?.setVolume(volume) ?? { success: false, error: 'Service not initialized' }
-    )
+    return await audioPlayerService?.setVolume(volume)
   })
 
-  ipcMain.handle(AudioPlayerChannels.TOGGLE_MUTE, async (_event) => {
-    return audioPlayerService?.toggleMute() ?? { success: false, error: 'Service not initialized' }
+  ipcMain.handle(AudioPlayerChannels.TOGGLE_MUTE, async () => {
+    return await audioPlayerService?.toggleMute()
   })
 
-  ipcMain.handle(AudioPlayerChannels.GET_STATE, async (_event) => {
-    return audioPlayerService?.getState() ?? null
+  ipcMain.handle(AudioPlayerChannels.SEEK, async (_event, position) => {
+    return await audioPlayerService?.seek(position)
   })
 
-  // Renderer event handler (one-way communication)
-  ipcMain.on(AudioPlayerChannels.RENDERER_EVENT, (_event, rendererEvent) => {
-    audioPlayerService?.handleRendererEvent(rendererEvent)
+  ipcMain.handle(AudioPlayerChannels.UPDATE_SETTINGS, async (_event, settings) => {
+    return await audioPlayerService?.updateSettings(settings)
   })
 
-  // Recording IPC Handlers (old audio player recording - will be deprecated)
-  ipcMain.handle('recording-start', async (_event, station: Station) => {
-    return (
-      audioPlayerService?.startRecording(station) ?? {
-        success: false,
-        error: 'Service not initialized'
-      }
-    )
+  ipcMain.handle(AudioPlayerChannels.GET_DEVICES, async () => {
+    return (await audioPlayerService?.getAudioDevices()) || []
   })
 
-  ipcMain.handle('recording-stop', async (_event) => {
-    return (
-      audioPlayerService?.stopRecording() ?? { success: false, error: 'Service not initialized' }
-    )
+  ipcMain.handle(AudioPlayerChannels.GET_STATE, async () => {
+    return audioPlayerService?.getState()
   })
 
-  // Recorder Service IPC Handlers
-  ipcMain.handle(RecorderChannels.START_RECORDING, async (_event, station, duration) => {
-    return (
-      recorderService?.startRecording(station, duration) ?? {
-        success: false,
-        error: 'Recorder service not initialized'
-      }
-    )
+  ipcMain.on(AudioPlayerChannels.RENDERER_EVENT, (_event, event) => {
+    audioPlayerService?.handleRendererEvent(event)
   })
 
-  ipcMain.handle(RecorderChannels.STOP_RECORDING, async (_event, recorderId) => {
-    return (
-      recorderService?.stopRecording(recorderId) ?? {
-        success: false,
-        error: 'Recorder service not initialized',
-        recorderId
-      }
-    )
-  })
-
-  ipcMain.handle(RecorderChannels.STOP_ALL_RECORDINGS, async (_event) => {
-    return (
-      recorderService?.stopAllRecordings() ?? [
-        {
-          success: false,
-          error: 'Recorder service not initialized'
+  // Subsonic Service IPC Handlers
+  ipcMain.handle(
+    SubsonicChannels.SET_CREDENTIALS,
+    async (_event, username, password, serverUrl) => {
+      try {
+        await subsonicService?.setCredentials(username, password, serverUrl)
+        return {
+          success: true,
+          data: await subsonicService?.getCredentialsStatus()
         }
-      ]
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set credentials'
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(SubsonicChannels.CLEAR_CREDENTIALS, async () => {
+    try {
+      await subsonicService?.clearCredentials()
+      return {
+        success: true,
+        data: { configured: false }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to clear credentials'
+      }
+    }
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_CREDENTIALS_STATUS, async () => {
+    return await subsonicService?.getCredentialsStatus()
+  })
+
+  ipcMain.handle(SubsonicChannels.PING, async () => {
+    return (
+      subsonicService?.ping() ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
     )
   })
 
-  ipcMain.handle(RecorderChannels.GET_ACTIVE_RECORDINGS, async (_event) => {
-    return recorderService?.getActiveRecordings() ?? []
+  ipcMain.handle(SubsonicChannels.GET_SONG, async (_event, songId) => {
+    return (
+      subsonicService?.getSong(songId) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
   })
 
-  ipcMain.handle(RecorderChannels.GET_RECORDING, async (_event, recorderId) => {
-    return recorderService?.getRecording(recorderId) ?? null
+  ipcMain.handle(SubsonicChannels.GET_ALBUM, async (_event, albumId) => {
+    return (
+      subsonicService?.getAlbum(albumId) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_ARTIST, async (_event, artistId) => {
+    return (
+      subsonicService?.getArtist(artistId) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_PLAYLISTS, async () => {
+    return (
+      subsonicService?.getPlaylists() ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_PLAYLIST, async (_event, playlistId) => {
+    return (
+      subsonicService?.getPlaylist(playlistId) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.CREATE_PLAYLIST, async (_event, name, songIds) => {
+    return (
+      subsonicService?.createPlaylist(name, songIds) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.DELETE_PLAYLIST, async (_event, playlistId) => {
+    return (
+      subsonicService?.deletePlaylist(playlistId) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.UPDATE_PLAYLIST, async (_event, playlistId, name, comment) => {
+    return (
+      subsonicService?.updatePlaylist(playlistId, name, comment) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.REPLACE_PLAYLIST_SONGS, async (_event, playlistId, songIds) => {
+    return (
+      subsonicService?.replacePlaylistSongs(playlistId, songIds) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_COVER_ART_URL, async (_event, id) => {
+    return subsonicService?.getCoverArtUrl(id) ?? null
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_MOST_PLAYED, async (_event, options) => {
+    return (
+      subsonicService?.getMostPlayed(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_RANDOM_ALBUMS, async (_event, options) => {
+    return (
+      subsonicService?.getRandomAlbums(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_SEARCH_RESULTS, async (_event, options) => {
+    return (
+      subsonicService?.search(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_STARRED, async () => {
+    return (
+      subsonicService?.getStarred() ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.STAR, async (_event, options) => {
+    return (
+      subsonicService?.star(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.UNSTAR, async (_event, options) => {
+    return (
+      subsonicService?.unstar(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_STREAM_BASE_URL, async (_event, songId) => {
+    return subsonicService?.generateStreamUrl(songId) ?? null
   })
 
   createWindow()
@@ -337,28 +481,26 @@ app.whenReady().then(() => {
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // Clean up services
+    if (subsonicService) {
+      subsonicService.dispose()
+      subsonicService = null
+    }
     if (audioPlayerService) {
       audioPlayerService.dispose()
       audioPlayerService = null
-    }
-    if (recorderService) {
-      recorderService.dispose()
-      recorderService = null
     }
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
-  // Clean up services on app quit
+  if (subsonicService) {
+    subsonicService.dispose()
+    subsonicService = null
+  }
   if (audioPlayerService) {
     audioPlayerService.dispose()
     audioPlayerService = null
-  }
-  if (recorderService) {
-    recorderService.dispose()
-    recorderService = null
   }
 })
 

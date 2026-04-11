@@ -25,7 +25,7 @@ export const WindowProvider = ({ children }: WindowProviderProps) => {
   })
 
   const updateWindowState = (newState: Partial<WindowState>) => {
-    setWindowState(prev => ({ ...prev, ...newState }))
+    setWindowState((prev) => ({ ...prev, ...newState }))
   }
 
   useEffect(() => {
@@ -48,12 +48,15 @@ export const WindowProvider = ({ children }: WindowProviderProps) => {
     window.electron?.ipcRenderer.on('window-focus-changed', handleFocusChange)
 
     // Request initial window state
-    window.electron?.ipcRenderer.invoke('get-window-state').then((initialState: WindowState) => {
-      setWindowState(initialState)
-    }).catch(() => {
-      // Fallback if get-window-state is not implemented yet
-      console.log('Window state API not available yet')
-    })
+    window.electron?.ipcRenderer
+      .invoke('get-window-state')
+      .then((initialState: WindowState) => {
+        setWindowState(initialState)
+      })
+      .catch(() => {
+        // Fallback if get-window-state is not implemented yet
+        console.log('Window state API not available yet')
+      })
 
     // Cleanup listeners on unmount
     return () => {

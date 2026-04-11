@@ -1,25 +1,61 @@
 import { Station } from 'radio-browser-api'
-import { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react'
-import { audioEqualizer } from '../lib/audio-eq'
+import { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { SubsonicSong } from '../../../../types/subsonic'
+import {
+  AudioPlayerState,
+  AudioPlayerChannels,
+  AudioPlayerStateChanged,
+  RepeatMode,
+  AudioDevice
+} from '../../../../types/audio-player'
+import { getItem, setItem, STORES } from '../lib/indexeddb'
 
 interface AudioPlayerContextType {
-  // State (synced with main process)
+  // State
   isPlaying: boolean
   currentStation: Station | null
+  currentSong: SubsonicSong | null
+  currentSongId: string | null
+  queue: SubsonicSong[]
+  shuffle: boolean
+  repeat: RepeatMode
+  duration: number
+  currentTime: number
+  isSeekable: boolean
   volume: number
   isMuted: boolean
   isLoading: boolean
   error: string | null
 
-  // Controls (IPC commands)
+  // Settings
+  gaplessEnabled: boolean
+  exclusiveEnabled: boolean
+  bitPerfectEnabled: boolean
+  audioDevice: string | null
+
+  // Controls
   play: (station: Station) => void
+  playSong: (songs: SubsonicSong[], songId: string) => void
+  shufflePlay: (songs: SubsonicSong[]) => void
+  playFromQueue: (songId: string) => void
   pause: () => void
   stop: () => void
+  resume: () => Promise<void>
+  seek: (time: number) => void
   setVolume: (volume: number) => void
   toggleMute: () => void
+  updateSettings: (settings: Partial<AudioPlayerState>) => Promise<void>
+  getAudioDevices: () => Promise<AudioDevice[]>
+  onSongEnded: (callback: () => void) => () => void
 
-  // HTMLAudioElement reference (stays in renderer)
-  audioElement: HTMLAudioElement | null
+  // Queue Controls
+  addToQueue: (song: SubsonicSong) => void
+  clearQueue: () => void
+  removeFromQueue: (songId: string) => void
+  toggleShuffle: () => void
+  setRepeat: (mode: RepeatMode) => void
+  playNext: () => void
+  playPrevious: () => void
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined)
@@ -28,189 +64,368 @@ interface AudioPlayerProviderProps {
   children: React.ReactNode
 }
 
+const QUEUE_STORAGE_KEY = 'audio-player-queue'
+const SHUFFLED_QUEUE_STORAGE_KEY = 'audio-player-shuffled-queue'
+const SHUFFLE_STORAGE_KEY = 'audio-player-shuffle'
+
 export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
   children
 }: AudioPlayerProviderProps) => {
-  // HTMLAudioElement for Web Audio API (equalizer) only - not for playback
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null)
-
-  // State synced with main process
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentStation, setCurrentStation] = useState<Station | null>(null)
+  const [currentSong, setCurrentSong] = useState<SubsonicSong | null>(null)
+  const [currentSongId, setCurrentSongId] = useState<string | null>(null)
+  const [originalQueue, setOriginalQueue] = useState<SubsonicSong[]>([])
+  const [shuffledQueue, setShuffledQueue] = useState<SubsonicSong[]>([])
+  const [shuffle, setShuffle] = useState(false)
+  const [repeat, setRepeat] = useState<RepeatMode>('off')
   const [volume, setVolumeState] = useState(0.7)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [duration, setDuration] = useState<number>(0)
+  const [currentTime, setCurrentTime] = useState<number>(0)
+  const [isSeekable, setIsSeekable] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
 
-  // Cleanup functions for IPC event listeners
-  const cleanupStateListener = useRef<(() => void) | null>(null)
+  // Settings state
+  const [gaplessEnabled, setGaplessEnabled] = useState(true)
+  const [exclusiveEnabled, setExclusiveEnabled] = useState(false)
+  const [bitPerfectEnabled, setBitPerfectEnabled] = useState(false)
+  const [audioDevice, setAudioDevice] = useState<string | null>(null)
 
-  // Initialize HTMLAudioElement for Web Audio API and IPC listeners
+  const onSongEndedCallbacks = useRef<Set<() => void>>(new Set())
+
+  // Sync with main process state and load persisted state
   useEffect(() => {
-    // Initialize audio element for Web Audio API features (equalizer, recording)
-    audioRef.current = new Audio()
-    audioRef.current.volume = 0 // Muted since MPV handles actual playback
-    audioRef.current.preload = 'none'
-    audioRef.current.crossOrigin = 'anonymous'
+    const initAndSync = async () => {
+      // 1. Load persisted queue state
+      const savedQueue = await getItem<SubsonicSong[]>(STORES.SETTINGS, QUEUE_STORAGE_KEY)
+      const savedShuffledQueue = await getItem<SubsonicSong[]>(
+        STORES.SETTINGS,
+        SHUFFLED_QUEUE_STORAGE_KEY
+      )
+      const savedShuffle = await getItem<boolean>(STORES.SETTINGS, SHUFFLE_STORAGE_KEY)
 
-    // Add audio element to DOM (hidden) for proper Web Audio API support
-    audioRef.current.style.display = 'none'
-    document.body.appendChild(audioRef.current)
+      if (savedQueue) setOriginalQueue(savedQueue)
+      if (savedShuffledQueue) setShuffledQueue(savedShuffledQueue)
+      if (savedShuffle !== null) setShuffle(savedShuffle)
 
-    // Set state so it can be accessed in render without lint errors
-    setAudioElement(audioRef.current)
+      const syncState = (state: AudioPlayerState) => {
+        setIsPlaying(state.isPlaying)
+        setCurrentStation(state.currentStation)
+        setCurrentSong(state.currentSong)
+        setCurrentSongId(state.currentSong?.id || null)
+        setVolumeState(state.volume)
+        setIsMuted(state.isMuted)
+        setIsLoading(state.isLoading)
+        setError(state.error)
+        setCurrentTime(state.currentTime)
+        setDuration(state.duration || 0)
+        setIsSeekable(state.isSeekable)
 
-    // Connect to equalizer (this will work with the dummy audio element)
-    audioEqualizer.connect(audioRef.current)
-
-    console.log('Audio player context initialized (MPV mode)')
-
-    // Set up IPC event listeners for state synchronization
-    cleanupStateListener.current = window.api.audioPlayer.onStateChanged((event) => {
-      console.log('State changed from main process:', event.source, event.state)
-
-      const newState = event.state
-
-      // Update local state to match main process
-      setIsPlaying(newState.isPlaying)
-      setCurrentStation(newState.currentStation)
-      setVolumeState(newState.volume)
-      setIsMuted(newState.isMuted)
-      setIsLoading(newState.isLoading)
-      setError(newState.error)
-
-      console.log('UI state updated:', {
-        isPlaying: newState.isPlaying,
-        station: newState.currentStation?.name,
-        volume: newState.volume,
-        isMuted: newState.isMuted,
-        isLoading: newState.isLoading,
-        error: newState.error
-      })
-    })
-
-    // Load initial state from main process
-    window.api.audioPlayer
-      .getState()
-      .then((initialState) => {
-        if (initialState) {
-          console.log('Loaded initial state from main process:', initialState)
-          setIsPlaying(initialState.isPlaying)
-          setCurrentStation(initialState.currentStation)
-          setVolumeState(initialState.volume)
-          setIsMuted(initialState.isMuted)
-          setIsLoading(initialState.isLoading)
-          setError(initialState.error)
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load initial audio player state:', err)
-      })
-
-    // Cleanup function
-    return () => {
-      // Cleanup IPC listeners
-      if (cleanupStateListener.current) {
-        cleanupStateListener.current()
+        // Update settings state
+        setGaplessEnabled(state.gaplessEnabled)
+        setExclusiveEnabled(state.exclusiveEnabled)
+        setBitPerfectEnabled(state.bitPerfectEnabled)
+        setAudioDevice(state.audioDevice)
       }
 
-      // Cleanup dummy audio element
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ''
+      // Get initial state
+      const initialState = await window.api.audioPlayer.getState()
 
-        // Remove audio element from DOM
-        if (audioRef.current.parentNode) {
-          audioRef.current.parentNode.removeChild(audioRef.current)
-        }
+      // CRITICAL: Handle startup "leftovers" - if not playing, don't show metadata
+      // that can't be resumed because MPV instance is fresh.
+      if (!initialState.isPlaying) {
+        initialState.currentStation = null
+        initialState.currentSong = null
+        initialState.currentTime = 0
+        initialState.duration = 0
       }
+
+      syncState(initialState)
+      setIsInitialized(true)
+
+      // Listen for changes
+      const unsubscribe = window.api.audioPlayer.onStateChanged((event) => {
+        syncState(event.state)
+
+        // Detect song end
+        if (event.source === 'ended') {
+          onSongEndedCallbacks.current.forEach((cb) => cb())
+        }
+      })
+
+      return unsubscribe
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const cleanupPromise = initAndSync()
+    return () => {
+      cleanupPromise.then((unsubscribe) => unsubscribe && unsubscribe())
+    }
   }, [])
 
-  // IPC Command handlers (call main process - MPV handles actual playback)
-  const play = useCallback(async (station: Station) => {
-    console.log('Play command:', station.name)
-
-    try {
-      const result = await window.api.audioPlayer.playStation(station)
-      if (!result.success) {
-        console.error('Failed to play station:', result.error)
-      }
-    } catch (error) {
-      console.error('IPC play command failed:', error)
+  // Persist queue changes
+  useEffect(() => {
+    if (isInitialized) {
+      setItem(STORES.SETTINGS, QUEUE_STORAGE_KEY, originalQueue)
+      setItem(STORES.SETTINGS, SHUFFLED_QUEUE_STORAGE_KEY, shuffledQueue)
+      setItem(STORES.SETTINGS, SHUFFLE_STORAGE_KEY, shuffle)
     }
+  }, [originalQueue, shuffledQueue, shuffle, isInitialized])
+
+  // The active queue depends on shuffle state
+  const queue = useMemo(
+    () => (shuffle ? shuffledQueue : originalQueue),
+    [shuffle, shuffledQueue, originalQueue]
+  )
+
+  // Helper to shuffle an array
+  const shuffleArray = (array: SubsonicSong[]) => {
+    const newArray = [...array]
+    for (let i = newArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[newArray[i], newArray[j]] = [newArray[j], newArray[i]]
+    }
+    return newArray
+  }
+
+  const onSongEnded = useCallback((callback: () => void) => {
+    onSongEndedCallbacks.current.add(callback)
+    return () => {
+      onSongEndedCallbacks.current.delete(callback)
+    }
+  }, [])
+
+  const seek = useCallback((time: number) => {
+    window.api.audioPlayer.seek(time)
+  }, [])
+
+  const play = useCallback(async (station: Station) => {
+    await window.api.audioPlayer.playStation(station)
+  }, [])
+
+  const playSongInternal = useCallback(async (song: SubsonicSong) => {
+    try {
+      const stream = await window.api.subsonic.generateStreamUrl(song.id)
+      if (!stream) {
+        throw new Error('Failed to generate stream URL')
+      }
+      await window.api.audioPlayer.playSong(song, stream)
+    } catch (err: any) {
+      console.error('Play error:', err)
+    }
+  }, [])
+
+  const playSong = useCallback(
+    async (songs: SubsonicSong[], songId: string) => {
+      setOriginalQueue(songs)
+      setShuffledQueue(shuffleArray(songs))
+
+      const song = songs.find((s) => s.id === songId)
+      if (song) {
+        await playSongInternal(song)
+      }
+    },
+    [playSongInternal]
+  )
+
+  const shufflePlay = useCallback(
+    async (songs: SubsonicSong[]) => {
+      setShuffle(true)
+      const shuffled = shuffleArray(songs)
+      setOriginalQueue(songs)
+      setShuffledQueue(shuffled)
+
+      if (shuffled.length > 0) {
+        await playSongInternal(shuffled[0])
+      }
+    },
+    [playSongInternal]
+  )
+
+  const playFromQueue = useCallback(
+    async (songId: string) => {
+      const song = queue.find((s) => s.id === songId)
+      if (song) {
+        await playSongInternal(song)
+      }
+    },
+    [queue, playSongInternal]
+  )
+
+  const playNext = useCallback(() => {
+    if (queue.length === 0) return
+
+    const currentIndex = queue.findIndex((s) => s.id === currentSong?.id)
+    let nextIndex = currentIndex + 1
+
+    if (nextIndex >= queue.length) {
+      if (repeat === 'all') {
+        nextIndex = 0
+      } else {
+        return // End of queue
+      }
+    }
+
+    const nextSong = queue[nextIndex]
+    if (nextSong) {
+      playSongInternal(nextSong)
+    }
+  }, [queue, currentSong, repeat, playSongInternal])
+
+  const playPrevious = useCallback(() => {
+    if (queue.length === 0) return
+
+    const currentIndex = queue.findIndex((s) => s.id === currentSong?.id)
+    let prevIndex = currentIndex - 1
+
+    if (prevIndex < 0) {
+      if (repeat === 'all') {
+        prevIndex = queue.length - 1
+      } else {
+        prevIndex = 0 // Just restart current song or stay at first
+      }
+    }
+
+    const prevSong = queue[prevIndex]
+    if (prevSong) {
+      playSongInternal(prevSong)
+    }
+  }, [queue, currentSong, repeat, playSongInternal])
+
+  const toggleShuffle = useCallback(() => {
+    setShuffle((prev) => {
+      const nextShuffle = !prev
+      if (nextShuffle) {
+        const newShuffled = shuffleArray(originalQueue)
+        if (currentSong) {
+          const index = newShuffled.findIndex((s) => s.id === currentSong.id)
+          if (index > -1) {
+            const [song] = newShuffled.splice(index, 1)
+            newShuffled.unshift(song)
+          }
+        }
+        setShuffledQueue(newShuffled)
+      }
+      return nextShuffle
+    })
+  }, [originalQueue, currentSong])
+
+  const addToQueue = useCallback((song: SubsonicSong) => {
+    setOriginalQueue((prev) => [...prev, song])
+    setShuffledQueue((prev) => [...prev, song])
+  }, [])
+
+  const clearQueue = useCallback(() => {
+    setOriginalQueue([])
+    setShuffledQueue([])
+    setCurrentSongId(null)
+    setCurrentSong(null)
+    window.api.audioPlayer.stop()
+  }, [])
+
+  const removeFromQueue = useCallback(
+    (songId: string) => {
+      setOriginalQueue((prev) => prev.filter((s) => s.id !== songId))
+      setShuffledQueue((prev) => prev.filter((s) => s.id !== songId))
+      if (currentSongId === songId) {
+        playNext()
+      }
+    },
+    [currentSongId, playNext]
+  )
+
+  const resume = useCallback(async () => {
+    await window.api.audioPlayer.resume()
   }, [])
 
   const pause = useCallback(async () => {
-    console.log('Pause command')
-
-    try {
-      const result = await window.api.audioPlayer.pause()
-      if (!result.success) {
-        console.error('Failed to pause:', result.error)
-      }
-    } catch (error) {
-      console.error('IPC pause command failed:', error)
-    }
+    await window.api.audioPlayer.pause()
   }, [])
 
   const stop = useCallback(async () => {
-    console.log('Stop command')
-
-    try {
-      const result = await window.api.audioPlayer.stop()
-      if (!result.success) {
-        console.error('Failed to stop:', result.error)
-      }
-    } catch (error) {
-      console.error('IPC stop command failed:', error)
-    }
+    await window.api.audioPlayer.stop()
   }, [])
 
   const setVolume = useCallback(async (newVolume: number) => {
-    const clampedVolume = Math.max(0, Math.min(1, newVolume))
-    console.log('Set volume command:', clampedVolume)
-
-    try {
-      const result = await window.api.audioPlayer.setVolume(clampedVolume)
-      if (!result.success) {
-        console.error('Failed to set volume:', result.error)
-      }
-    } catch (error) {
-      console.error('IPC set volume command failed:', error)
-    }
+    await window.api.audioPlayer.setVolume(newVolume)
   }, [])
 
   const toggleMute = useCallback(async () => {
-    console.log('Toggle mute command')
-
-    try {
-      const result = await window.api.audioPlayer.toggleMute()
-      if (!result.success) {
-        console.error('Failed to toggle mute:', result.error)
-      }
-    } catch (error) {
-      console.error('IPC toggle mute command failed:', error)
-    }
+    await window.api.audioPlayer.toggleMute()
   }, [])
+
+  const updateSettings = useCallback(async (settings: Partial<AudioPlayerState>) => {
+    await window.api.audioPlayer.updateSettings(settings)
+  }, [])
+
+  const getAudioDevices = useCallback(async () => {
+    return await window.api.audioPlayer.getAudioDevices()
+  }, [])
+
+  // Handle automatic song advancement
+  const repeatRef = useRef(repeat)
+  useEffect(() => {
+    repeatRef.current = repeat
+  }, [repeat])
+
+  useEffect(() => {
+    const handleEndedInternal = () => {
+      if (repeatRef.current === 'one') {
+        if (currentSong) {
+          playSongInternal(currentSong)
+        }
+      } else {
+        playNext()
+      }
+    }
+
+    const cleanup = onSongEnded(handleEndedInternal)
+    return cleanup
+  }, [onSongEnded, playNext, currentSong, playSongInternal])
 
   return (
     <AudioPlayerContext.Provider
       value={{
         isPlaying,
         currentStation,
+        currentSong,
+        currentSongId,
+        queue,
+        shuffle,
+        repeat,
+        playSong,
+        shufflePlay,
+        playFromQueue,
         volume,
         isMuted,
         isLoading,
         error,
+        gaplessEnabled,
+        exclusiveEnabled,
+        bitPerfectEnabled,
+        audioDevice,
         play,
+        resume,
         pause,
         stop,
         setVolume,
         toggleMute,
-        audioElement
+        updateSettings,
+        getAudioDevices,
+        seek,
+        isSeekable,
+        duration,
+        currentTime,
+        onSongEnded,
+        addToQueue,
+        clearQueue,
+        removeFromQueue,
+        toggleShuffle,
+        setRepeat,
+        playNext,
+        playPrevious
       }}
     >
       {children}

@@ -1,10 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useAudioPlayer } from '../contexts/audio-player-context'
-import { useUserLocation } from '../contexts/user-location-context'
-import { useHistory } from '../contexts/history-context'
-import { StationCarousel } from '../components/station-carousel'
-import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
-import { Station } from 'radio-browser-api'
+import { AlbumCarousel } from '../components/album-carousel'
+import { FeaturedAlbumCarousel } from '../components/featured-album-carousel'
+import { SubsonicAlbum, SubsonicSong } from '../../../../types/subsonic'
+import { useRef, useEffect, useState } from 'react'
+import { useSubsonic } from '../contexts/subsonic-context'
+
+type ExtendedAlbum = SubsonicAlbum & { title: string }
 
 export const Route = createFileRoute('/')({
   component: RadiosList
@@ -32,155 +34,56 @@ const CarouselPlaceholder: React.FC<{
   )
 }
 
-export default function RadiosList() {
-  const { countryCode, city } = useUserLocation()
-  const { play } = useAudioPlayer()
-  const { getRecentStations } = useHistory()
+function RadiosList() {
+  const { playSong } = useAudioPlayer()
+  const { subsonicEnabled, isInitialized } = useSubsonic()
+  const navigate = useNavigate()
   const [visibleCarousels, setVisibleCarousels] = useState<Set<string>>(
-    new Set(['recently-played', 'trending', 'music', 'local'])
+    new Set(['recently-played', 'most-played-albums', 'trending', 'music', 'local'])
   )
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const [subsonicConfigured, setSubsonicConfigured] = useState(false)
 
-  // Get recently played stations from history
-  const recentlyPlayed = useMemo(() => getRecentStations(10), [getRecentStations])
-
-  // Fetch function for recently played - returns cached data
-  const fetchRecentlyPlayed = useCallback(
-    async (offset: number, limit: number): Promise<Station[]> => {
-      // Return slice of recently played stations based on offset/limit
-      return recentlyPlayed.slice(offset, offset + limit)
-    },
-    [recentlyPlayed]
-  )
-
-  // Fetch trending stations (ordered by recent clicks/trending)
-  const fetchTrendingStations = useCallback(async (offset: number, limit: number) => {
-    // eslint-disable-next-line no-useless-catch
-    try {
-      const response = await fetch(
-        `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clicktrend&reverse=true`
-      )
-      return await response.json()
-    } catch (error) {
-      throw error
+  useEffect(() => {
+    if (isInitialized && !subsonicEnabled) {
+      navigate({ to: '/radio' })
     }
+  }, [isInitialized, subsonicEnabled, navigate])
+
+  useEffect(() => {
+    window.api.subsonic.getCredentialsStatus().then((status) => {
+      setSubsonicConfigured(status.configured)
+    })
+
+    const cleanup = window.api.subsonic.onCredentialsChanged((status) => {
+      setSubsonicConfigured(status.configured)
+    })
+
+    return cleanup
   }, [])
 
-  // Fetch recently added/changed stations
-  const fetchRecentlyAdded = useCallback(async (offset: number, limit: number) => {
-    // eslint-disable-next-line no-useless-catch
-    try {
-      const response = await fetch(
-        `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=changetimestamp&reverse=true`
-      )
-      return await response.json()
-    } catch (error) {
-      throw error
+  const fetchMostPlayedAlbums = async (offset: number, size: number) => {
+    const result = await window.api.subsonic.getMostPlayed({
+      offset: offset.toString(),
+      size: size.toString()
+    })
+
+    if (result.success && result.data) {
+      return (result.data as { album: ExtendedAlbum[] }).album
     }
-  }, [])
 
-  const fetchTopLocalStations = useCallback(
-    async (offset: number, limit: number) => {
-      console.log(countryCode)
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&countrycode=${countryCode}${city ? `&state=${encodeURIComponent(city)}` : ''}`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
+    return []
+  }
+
+  const handlePlayAlbum = async (album: ExtendedAlbum) => {
+    const result = await window.api.subsonic.getAlbum(album.id)
+    if (result.success && result.data) {
+      const albumData = result.data as { song: SubsonicSong[] }
+      if (albumData.song && albumData.song.length > 0) {
+        playSong(albumData.song, albumData.song[0].id)
       }
-    },
-    [countryCode, city]
-  )
-
-  const fetchTopMusicStations = useCallback(
-    async (offset: number, limit: number) => {
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&countrycode=${countryCode}&tag=music`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
-      }
-    },
-    [countryCode]
-  )
-
-  const fetchLocalPopStations = useCallback(
-    async (offset: number, limit: number) => {
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&countrycode=${countryCode}&tag=pop`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
-      }
-    },
-    [countryCode]
-  )
-
-  const fetchLocalNewsStations = useCallback(
-    async (offset: number, limit: number) => {
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&countrycode=${countryCode}&tag=news`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
-      }
-    },
-    [countryCode]
-  )
-
-  const fetchTopNewsStations = useCallback(async (offset: number, limit: number) => {
-    // eslint-disable-next-line no-useless-catch
-    try {
-      const response = await fetch(
-        `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&tag=news`
-      )
-      return await response.json()
-    } catch (error) {
-      throw error
     }
-  }, [])
-
-  const fetchTopRockStations = useCallback(
-    async (offset: number, limit: number) => {
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&tag=rock&countrycode=${countryCode}`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
-      }
-    },
-    [countryCode]
-  )
-
-  const fetchTopSportsStations = useCallback(
-    async (offset: number, limit: number) => {
-      // eslint-disable-next-line no-useless-catch
-      try {
-        const response = await fetch(
-          `https://sway.dablulite.dev/api/radio/search?limit=${limit}&offset=${offset}&order=clickcount&reverse=true&tag=sports&countrycode=${countryCode}`
-        )
-        return await response.json()
-      } catch (error) {
-        throw error
-      }
-    },
-    [countryCode]
-  )
+  }
 
   useEffect(() => {
     if (observerRef.current) observerRef.current.disconnect()
@@ -216,103 +119,23 @@ export default function RadiosList() {
     }
   }, [])
 
+  if (!isInitialized || (isInitialized && !subsonicEnabled)) {
+    return null
+  }
+
   return (
     <div className="flex min-h-screen items-start justify-start w-full font-sans overflow-auto">
       <main className="main-page pr-0!">
-        {/* Recently Played - only show if user has history */}
-        {recentlyPlayed.length > 0 && (
-          <CarouselPlaceholder id="recently-played" visibleCarousels={visibleCarousels}>
-            <StationCarousel
-              key={`recently-played-${recentlyPlayed.length}`}
-              title="Recently Played"
-              fetchStations={fetchRecentlyPlayed}
-              onStationPlay={play}
+        {subsonicConfigured && <FeaturedAlbumCarousel />}
+        {subsonicConfigured && (
+          <CarouselPlaceholder id="most-played-albums" visibleCarousels={visibleCarousels}>
+            <AlbumCarousel
+              title="Most Played Albums"
+              fetchAlbums={fetchMostPlayedAlbums}
+              onAlbumPlay={handlePlayAlbum}
             />
           </CarouselPlaceholder>
         )}
-
-        {/* Trending Stations - based on click trend */}
-        <CarouselPlaceholder id="trending" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key="trending"
-            title="Trending Now"
-            fetchStations={fetchTrendingStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="music" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`music-${countryCode}-${city}`}
-            title="Top Music"
-            fetchStations={fetchTopMusicStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="local" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`local-${countryCode}-${city}`}
-            title="Top Local Stations"
-            fetchStations={fetchTopLocalStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        {/* Recently Added Stations */}
-        <CarouselPlaceholder id="recently-added" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key="recently-added"
-            title="Recently Added"
-            fetchStations={fetchRecentlyAdded}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="pop" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`pop-${countryCode}-${city}`}
-            title="Local Pop Stations"
-            fetchStations={fetchLocalPopStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="news" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`news-${countryCode}-${city}`}
-            title="Local News Stations"
-            fetchStations={fetchLocalNewsStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="top-news" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`top-news-${countryCode}-${city}`}
-            title="Top News Stations"
-            fetchStations={fetchTopNewsStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="rock" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`rock-${countryCode}-${city}`}
-            title="Top Rock Stations"
-            fetchStations={fetchTopRockStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
-
-        <CarouselPlaceholder id="sports" visibleCarousels={visibleCarousels}>
-          <StationCarousel
-            key={`sports-${countryCode}-${city}`}
-            title="Top Sports Stations"
-            fetchStations={fetchTopSportsStations}
-            onStationPlay={play}
-          />
-        </CarouselPlaceholder>
       </main>
     </div>
   )

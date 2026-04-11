@@ -10,7 +10,7 @@ interface KeyboardShortcutsOptions {
 export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => {
   const { enabled = true, onSleepTimerToggle } = options
 
-  const { isPlaying, currentStation, volume, play, pause, stop, setVolume, toggleMute } =
+  const { isPlaying, currentStation, volume, play, pause, resume, stop, setVolume, toggleMute } =
     useAudioPlayer()
   // Just verify the hook is available - we use it via the callback
   useSleepTimer()
@@ -32,8 +32,8 @@ export const useKeyboardShortcuts = (options: KeyboardShortcutsOptions = {}) => 
         event.preventDefault()
         if (isPlaying) {
           pause()
-        } else if (currentStation) {
-          play(currentStation)
+        } else {
+          resume()
         }
         return
       }

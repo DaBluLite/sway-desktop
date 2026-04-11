@@ -1,51 +1,26 @@
-import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useFavourites } from '@renderer/contexts/favourites-context'
 import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
-import { StationItem } from '@renderer/components/station-item'
-import { Station } from 'radio-browser-api'
-import { Icon } from '@mdi/react'
-import { mdiChevronLeft } from '@mdi/js'
+import { createFileRoute } from '@tanstack/react-router'
+import { useFavourites } from '@renderer/contexts/favourites-context'
+import { StationCard } from '@renderer/components/station-card'
 
 export const Route = createFileRoute('/library/stations/')({
-  component: StationsPage
+  component: RouteComponent
 })
 
-function StationsPage() {
-  const router = useRouter()
+function RouteComponent() {
   const { favourites } = useFavourites()
   const { play } = useAudioPlayer()
 
-  const handlePlayStation = (station: Station) => {
-    play(station)
-  }
-
-  const handleBack = () => {
-    router.history.back()
-  }
-
   return (
-    <div className="flex min-h-screen justify-center font-sans w-full">
-      <main className="main-page">
-        <div className="mb-6 flex gap-4 w-full">
-          <h1 className="text-3xl font-bold text-black dark:text-white">Favourite Stations</h1>
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-2 text-green-500 hover:text-green-400 transition"
-          >
-            <Icon path={mdiChevronLeft} size={1} />
-            Back to Library
-          </button>
-        </div>
-        {favourites.length === 0 ? (
-          <p className="text-gray-800 dark:text-gray-500 mb-8">No favourite stations yet.</p>
-        ) : (
-          <div className="flex flex-col gap-4 w-full pb-24">
-            {favourites.map((radio) => {
-              return <StationItem key={radio.url} station={radio} onPlay={handlePlayStation} />
-            })}
-          </div>
-        )}
-      </main>
+    <div className="flex flex-col w-full h-screen">
+      <div className="station-carousel-header pl-8">
+        <h2 className="station-carousel-title">Stations</h2>
+      </div>
+      <div className="overflow-y-auto flex flex-wrap px-12 pt-8 pb-35 gap-x-4">
+        {favourites?.map((station, i) => (
+          <StationCard key={station.url + '_' + i} station={station} onPlay={() => play(station)} />
+        ))}
+      </div>
     </div>
   )
 }

@@ -44,5 +44,3 @@ function AppearanceSettings() {
     </>
   )
 }
-
-export default AppearanceSettings

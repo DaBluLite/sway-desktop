@@ -1,4 +1,5 @@
 import { Station } from 'radio-browser-api'
+import { SubsonicSong } from '../../../../types/subsonic'
 
 export type ModalType =
   | 'keyboard-shortcuts'
@@ -19,8 +20,10 @@ export interface BaseModalProps {
 
 export interface ModalConfig {
   type: ModalType
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   props?: Record<string, any>
   // Optional custom state that can be passed to modals
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   customState?: Record<string, any>
 }
 
@@ -42,7 +45,7 @@ export interface ModalContextValue {
 
   // Specialized helper methods for common use cases
   openShareModal: (station: Station) => string
-  openPlaylistModal: (station: Station) => string
+  openPlaylistModal: (song: SubsonicSong) => string
   openSimilarStationsModal: (station: Station) => string
   openKeyboardShortcutsModal: () => string
   openSleepTimerModal: () => string

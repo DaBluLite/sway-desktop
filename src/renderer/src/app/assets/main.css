@@ -167,7 +167,14 @@
   }
 }
 
+:root {
+  --range-bg: #000000;
+  --range-bg-opacity: rgb(0 0 0 / 0.4);
+}
+
 :where(.dark, .dark *) {
+  --range-bg: #ffffff;
+  --range-bg-opacity: rgb(255 255 255 / 0.4);
   @theme inline {
     --color-background: #0a0a0a;
     --color-foreground: #ededed;
@@ -220,62 +227,23 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  @apply use-theme-text shadow-glass overflow-hidden rounded-lg border border-faint relative;
+  @apply use-theme-text relative bg-[#e7f7ee] dark:bg-black;
+}
+
+.welcome-screen {
+  @apply z-999 fixed top-0 bottom-0 left-0 right-0 flex flex-col items-center justify-center gap-4 use-theme-text bg-[#e7f7ee] dark:bg-black;
 }
 
 ul {
   list-style: none;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  top: 1px;
-  left: 1px;
-  right: 1px;
-  bottom: 1px;
-  z-index: -1;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(134, 239, 172, 0.4) 0%, transparent 40%),
-    radial-gradient(circle at 80% 30%, rgba(74, 222, 128, 0.35) 0%, transparent 45%),
-    radial-gradient(circle at 30% 80%, rgba(187, 247, 208, 0.3) 0%, transparent 40%),
-    radial-gradient(circle at 70% 70%, rgba(134, 239, 172, 0.25) 0%, transparent 50%),
-    linear-gradient(180deg, #e5e5e5 0%, #d4edda 30%, #c3e6cb 50%, #a3d977 70%, #6bb555 100%);
-  @apply shadow-glass rounded-lg use-transition;
-}
-
-body.maximized::before {
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
 body.maximized {
   @apply rounded-none shadow-none;
 }
 
-.dark > body::before {
-  background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.15) 0%, transparent 40%),
-    radial-gradient(circle at 80% 30%, rgba(22, 163, 74, 0.2) 0%, transparent 45%),
-    radial-gradient(circle at 30% 80%, rgba(21, 128, 61, 0.15) 0%, transparent 40%),
-    radial-gradient(circle at 70% 70%, rgba(34, 197, 94, 0.12) 0%, transparent 50%),
-    linear-gradient(
-      180deg,
-      #000000 0%,
-      #010101 20%,
-      #050505 40%,
-      #0a140c 60%,
-      #0c1e12 80%,
-      #0e2716 100%
-    );
-}
-
 .titlebar-item {
-  @apply use-transition cursor-pointer p-2 rounded-sm invis-btn;
+  @apply use-transition cursor-pointer py-1.5 px-3 invis-btn;
 }
 
 .titlebar-item_close {
@@ -309,34 +277,17 @@ body.maximized {
 }
 
 .nav-item {
-  color: var(--foreground);
   text-decoration: none;
   font-weight: semibold;
   font-size: 14px;
-  @apply rounded-[22px] backdrop-blur-normal md:rounded-full w-full justify-center md:w-fit h-fit hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark use-transition text-black dark:text-white py-2.5 md:py-2 px-2 md:px-3 hover:shadow-glass border border-transparent hover:border-faint flex items-center gap-2;
+  @apply w-full rounded-sm use-theme-text justify-start h-fit hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark use-transition py-2.5 md:py-2 px-2 md:px-3 hover:shadow-glass flex items-center gap-2;
 
   &.active {
-    @apply bg-second-layer-thin dark:bg-second-layer-thin-dark border-subtle shadow-glass w-full md:w-fit;
+    @apply bg-second-layer-thin dark:bg-second-layer-thin-dark shadow-glass;
   }
 
   & > span {
     @apply select-none hidden md:block text-nowrap;
-  }
-}
-
-.nav-item-wrapper {
-  @apply backdrop-blur-normal flex flex-col items-center justify-center gap-1 static md:absolute md:top-1/2 md:left-1/2 md:-translate-1/2 p-2 md:p-1 bg-first-layer dark:bg-first-layer-dark raised-interface rounded-4xl md:rounded-full w-full md:w-fit;
-}
-
-.nav-items {
-  @apply flex gap-1 justify-stretch md:justify-center items-center w-full;
-}
-
-.navbar-overlay {
-  @apply fixed inset-0 bg-black/40 backdrop-blur-sm z-900 opacity-0 pointer-events-none transition-opacity duration-300 w-screen h-screen;
-
-  &.show {
-    @apply opacity-100 pointer-events-auto;
   }
 }
 
@@ -371,8 +322,8 @@ body.maximized {
 }
 
 .audio-player {
-  @apply backdrop-blur-normal z-100 rounded-lg bg-first-layer dark:bg-first-layer-dark border border-subtle;
-  @apply flex justify-evenly items-center gap-1 p-2 fixed bottom-2 left-2 right-2 shadow-main;
+  @apply backdrop-blur-md z-100 rounded-xl bg-second-layer-thin dark:bg-second-layer-thin-dark border border-subtle;
+  @apply flex justify-evenly items-center gap-1 p-3 fixed bottom-3 left-3 right-3 shadow-main;
 }
 
 .audio-player-info {
@@ -388,8 +339,10 @@ body.maximized {
 }
 
 .audio-player-logo {
-  width: 64px;
-  height: 64px;
+  min-width: 72px;
+  min-height: 72px;
+  max-width: 72px;
+  max-height: 72px;
   object-fit: cover;
   @apply raised-interface rounded-md;
 }
@@ -397,7 +350,6 @@ body.maximized {
 .audio-player-details {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
   min-width: 0;
 }
 
@@ -433,7 +385,6 @@ body.maximized {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-style: italic;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -989,14 +940,8 @@ body.maximized {
   }
 }
 
-.settings-sidebar {
-  @apply flex flex-col gap-1 h-full justify-start;
-  @apply rounded-lg raised-interface p-1;
-}
-
 .settings-sidebar-wrapper {
-  flex: 0 0 clamp(252px, 24svw, 320px);
-  @apply p-2 flex flex-col gap-2 z-1001;
+  @apply p-2 flex gap-2;
 }
 
 @media (width < 48rem) {
@@ -1007,12 +952,12 @@ body.maximized {
 }
 
 .settings-sidebar-item {
-  @apply flex items-center gap-2.5 px-3 py-2 rounded-md transition use-theme-text min-w-40;
-  @apply border border-transparent cursor-pointer hover:bg-second-layer-thin dark:hover:bg-second-layer-thin-dark hover:shadow-glass hover:border-faint;
+  @apply flex items-center justify-center px-3 py-2 use-theme-text min-w-40;
+  @apply border-b-2 border-transparent cursor-pointer hover:border-subtle;
 }
 
 .settings-sidebar-item.active {
-  @apply border-subtle bg-second-layer-thin-hover dark:bg-second-layer-thin-hover-dark shadow-glass;
+  @apply border-zinc-400;
 }
 
 .settings-content {
@@ -1149,11 +1094,11 @@ body.maximized {
 
 .station-card-play-overlay {
   @apply absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity duration-200 h-full;
-  @apply flex items-center justify-center;
+  @apply flex items-end justify-between p-2;
 }
 
 .station-card-play-button {
-  @apply w-16 h-16 rounded-full bg-white flex items-center justify-center text-black!;
+  @apply p-3 rounded-full bg-white flex items-center justify-center text-black!;
   @apply shadow-xl transform hover:scale-110 transition-transform;
 }
 
@@ -1193,11 +1138,11 @@ body.maximized {
 
 .station-carousel-header {
   font-family: 'Unbounded', cursive;
-  @apply flex items-center justify-between mb-6 ml-4;
+  @apply flex items-center justify-between ml-4;
 }
 
 .station-carousel-title {
-  @apply text-2xl font-semibold text-black dark:text-white;
+  @apply text-xl font-semibold text-black dark:text-white;
 }
 
 .station-carousel-controls {
@@ -1307,7 +1252,7 @@ body.maximized {
 }
 
 .main-page {
-  @apply flex min-h-full w-full flex-col items-center pt-18 px-8;
+  @apply flex min-h-full w-full max-w-full flex-col items-center px-8;
 }
 
 @utility btn-accent {
@@ -1500,18 +1445,6 @@ body.maximized {
   @apply raised-interface rounded-md focus:raised-interface-lg use-transition focus:outline-none;
 }
 
-.titlebar {
-  @apply absolute top-0 right-0 z-1000 flex items-center;
-}
-
-.titlebar-button {
-  @apply px-4 py-2 hover:bg-green-400/40 dark:hover:bg-green-800/40 transition duration-200 ease-in-out;
-}
-
-.titlebar-space {
-  @apply mr-auto;
-}
-
 *::-webkit-scrollbar {
   @apply hidden;
 }
@@ -1520,7 +1453,6 @@ body.maximized {
   -webkit-app-region: drag;
 }
 
-.titlebar,
 .search-bar-container,
 .search-bar-button,
 .saved-station-header-slot,
@@ -1759,16 +1691,29 @@ body.maximized {
   @apply bg-linear-to-br from-pink-500 to-red-500;
 }
 
-.navbar {
-  @apply flex items-center gap-3 justify-between absolute top-3 left-3 right-3 z-100;
+.titlebar {
+  -webkit-app-region: no-drag;
+  @apply fixed top-0 right-0 flex items-start justify-between z-1000;
 }
 
-.navbar-left,
-.navbar-right {
-  @apply flex items-start gap-1 justify-between;
+.navbar {
+  -webkit-app-region: no-drag;
+  @apply flex flex-col justify-start gap-1.5 p-3 min-w-70 max-w-70 h-screen border-r border-subtle;
 }
 
 .grab-bar {
   -webkit-app-region: drag;
-  @apply h-3 top-0 left-0 right-0 absolute;
+  @apply h-5 top-0 left-0 right-0 absolute;
+}
+
+.navbar-categories {
+  @apply overflow-y-auto flex flex-col relative;
+}
+
+.navbar-category {
+  @apply flex flex-col gap-1;
+}
+
+.navbar-category-header {
+  @apply text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 p-3 sticky top-0 bg-[#e7f7ee] dark:bg-black z-1;
 }

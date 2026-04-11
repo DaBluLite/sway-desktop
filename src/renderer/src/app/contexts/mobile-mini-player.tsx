@@ -28,8 +28,8 @@ export const MobileMiniPlayer: React.FC = () => {
     isMuted,
     isLoading,
     error,
-    play,
     pause,
+    resume,
     stop,
     toggleMute
   } = useAudioPlayer()
@@ -189,7 +189,7 @@ export const MobileMiniPlayer: React.FC = () => {
             <Icon path={mdiStop} size={1} />
           </button>
           <button
-            onClick={isPlaying ? pause : () => currentStation && play(currentStation)}
+            onClick={isPlaying ? pause : resume}
             disabled={isLoading || !currentStation}
             className="audio-player-btn audio-player-btn_playpause"
             aria-label={isPlaying ? 'Pause' : 'Play'}

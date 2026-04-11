@@ -1,6 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import { SubsonicAPI } from '../types/subsonic'
 import { AudioPlayerAPI } from '../types/audio-player'
-import { RecorderAPI } from '../types/recorder'
 
 interface WindowAPI {
   minimize: () => void
@@ -13,8 +13,8 @@ interface WindowAPI {
 
 interface API {
   window: WindowAPI
+  subsonic: SubsonicAPI
   audioPlayer: AudioPlayerAPI
-  recorder: RecorderAPI
 }
 
 declare global {

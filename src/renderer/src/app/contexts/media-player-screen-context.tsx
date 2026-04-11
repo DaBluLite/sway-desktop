@@ -28,7 +28,15 @@ export const MediaPlayerScreenProvider: React.FC<MediaPlayerScreenProviderProps>
       setIsAnimating(false)
     }, 300) // Delay to allow exit animation
   }, [])
-  const toggle = useCallback(() => setIsOpen((prev) => !prev), [])
+  const toggle = () => {
+    if (isOpen) {
+      setIsAnimating(true)
+      setTimeout(() => {
+        setIsOpen(false)
+        setIsAnimating(false)
+      }, 300) // Delay to allow exit animation
+    } else setIsOpen(true)
+  }
 
   return (
     <MediaPlayerScreenContext.Provider value={{ isOpen, open, close, toggle, isAnimating }}>

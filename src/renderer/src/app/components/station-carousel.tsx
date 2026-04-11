@@ -203,12 +203,7 @@ export const StationCarousel: React.FC<StationCarouselProps> = ({
               <div ref={sentinelRef} className="station-carousel-sentinel">
                 {isLoading && (
                   <div className="station-carousel-loader">
-                    <Icon
-                      path={mdiLoading}
-                      size={2}
-                      spin
-                      className="text-green-600 dark:text-green-400"
-                    />
+                    <Icon path={mdiLoading} size={2} spin className="use-theme-text opacity-50" />
                   </div>
                 )}
               </div>

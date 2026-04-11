@@ -1,20 +1,14 @@
-import { contextBridge } from 'electron'
+import { ipcRenderer, contextBridge } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { ipcRenderer } from 'electron'
 import { Station } from 'radio-browser-api'
+import { SubsonicCommandResult, SubsonicChannels, SubsonicSong } from '../types/subsonic'
 import {
-  AudioPlayerState,
   AudioPlayerCommandResult,
+  AudioPlayerState,
   AudioPlayerStateChanged,
-  RendererAudioEvent,
-  AudioPlayerChannels
+  AudioPlayerChannels,
+  RendererAudioEvent
 } from '../types/audio-player'
-import {
-  RecorderState,
-  RecorderCommandResult,
-  RecorderStateChanged,
-  RecorderChannels
-} from '../types/recorder'
 
 // Custom APIs for renderer
 const api = {
@@ -35,7 +29,7 @@ const api = {
       ipcRenderer.send('overlay-show')
     },
     onOverlayHiding(callback: () => void): () => void {
-      const listener = (_event: Electron.IpcRendererEvent) => {
+      const listener = () => {
         callback()
       }
       ipcRenderer.on('overlay-hiding', listener)
@@ -47,91 +41,195 @@ const api = {
     }
   },
   audioPlayer: {
-    // Command methods (bidirectional IPC)
     async playStation(station: Station): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.PLAY_STATION, station)
     },
-
+    async playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.PLAY_SONG, song, streamUrl)
+    },
     async pause(): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.PAUSE)
     },
-
+    async resume(): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.RESUME)
+    },
     async stop(): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.STOP)
     },
-
     async setVolume(volume: number): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.SET_VOLUME, volume)
     },
-
     async toggleMute(): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.TOGGLE_MUTE)
     },
-
-    async getState(): Promise<AudioPlayerState | null> {
+    async seek(position: number): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.SEEK, position)
+    },
+    async updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.UPDATE_SETTINGS, settings)
+    },
+    async getAudioDevices(): Promise<AudioDevice[]> {
+      return ipcRenderer.invoke(AudioPlayerChannels.GET_DEVICES)
+    },
+    async getState(): Promise<AudioPlayerState> {
       return ipcRenderer.invoke(AudioPlayerChannels.GET_STATE)
     },
-
-    // Event listeners
     onStateChanged(callback: (event: AudioPlayerStateChanged) => void): () => void {
-      const listener = (_event: Electron.IpcRendererEvent, data: AudioPlayerStateChanged) => {
-        callback(data)
+      const listener = (_event: Electron.IpcRendererEvent, event: AudioPlayerStateChanged) => {
+        callback(event)
       }
       ipcRenderer.on(AudioPlayerChannels.STATE_CHANGED, listener)
-
-      // Return cleanup function
       return () => {
         ipcRenderer.removeListener(AudioPlayerChannels.STATE_CHANGED, listener)
       }
     },
-
-    // Renderer event reporting (one-way to main process)
-    // Note: This is mostly for UI feedback since MPV handles actual playback
+    onRetryPlayback(callback: (station: Station) => void): () => void {
+      const listener = (_event: Electron.IpcRendererEvent, station: Station) => {
+        callback(station)
+      }
+      ipcRenderer.on(AudioPlayerChannels.RETRY_PLAYBACK, listener)
+      return () => {
+        ipcRenderer.removeListener(AudioPlayerChannels.RETRY_PLAYBACK, listener)
+      }
+    },
     reportRendererEvent(event: RendererAudioEvent): void {
       ipcRenderer.send(AudioPlayerChannels.RENDERER_EVENT, event)
     },
-
-    // Recording methods
     async startRecording(station: Station): Promise<AudioPlayerCommandResult> {
-      return ipcRenderer.invoke('recording-start', station)
+      return ipcRenderer.invoke('audio-player:start-recording', station)
     },
-
     async stopRecording(): Promise<AudioPlayerCommandResult> {
-      return ipcRenderer.invoke('recording-stop')
+      return ipcRenderer.invoke('audio-player:stop-recording')
     }
   },
-  recorder: {
-    // Command methods (bidirectional IPC)
-    async startRecording(station: Station, duration?: number): Promise<RecorderCommandResult> {
-      return ipcRenderer.invoke(RecorderChannels.START_RECORDING, station, duration)
+  subsonic: {
+    // Credentials management commands
+    async setCredentials(
+      username: string,
+      password: string,
+      serverUrl: string
+    ): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.SET_CREDENTIALS, username, password, serverUrl)
     },
 
-    async stopRecording(recorderId: string): Promise<RecorderCommandResult> {
-      return ipcRenderer.invoke(RecorderChannels.STOP_RECORDING, recorderId)
+    async clearCredentials(): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.CLEAR_CREDENTIALS)
     },
 
-    async stopAllRecordings(): Promise<RecorderCommandResult[]> {
-      return ipcRenderer.invoke(RecorderChannels.STOP_ALL_RECORDINGS)
+    async getCredentialsStatus(): Promise<{ configured: boolean; username?: string }> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_CREDENTIALS_STATUS)
     },
 
-    async getActiveRecordings(): Promise<RecorderState[]> {
-      return ipcRenderer.invoke(RecorderChannels.GET_ACTIVE_RECORDINGS)
+    async ping(): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.PING)
     },
 
-    async getRecording(recorderId: string): Promise<RecorderState | null> {
-      return ipcRenderer.invoke(RecorderChannels.GET_RECORDING, recorderId)
+    // Song metadata
+    async getSong(songId: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_SONG, songId)
+    },
+
+    async getAlbum(albumId: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_ALBUM, albumId)
+    },
+
+    async getArtist(artistId: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_ARTIST, artistId)
+    },
+
+    async getPlaylists(): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_PLAYLISTS)
+    },
+
+    async getPlaylist(playlistId: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_PLAYLIST, playlistId)
+    },
+
+    async createPlaylist(name: string, songIds: string[]): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.CREATE_PLAYLIST, name, songIds)
+    },
+
+    async deletePlaylist(playlistId: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.DELETE_PLAYLIST, playlistId)
+    },
+
+    async updatePlaylist(
+      playlistId: string,
+      name?: string,
+      comment?: string
+    ): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.UPDATE_PLAYLIST, playlistId, name, comment)
+    },
+
+    async replacePlaylistSongs(
+      playlistId: string,
+      songIds: string[]
+    ): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.REPLACE_PLAYLIST_SONGS, playlistId, songIds)
+    },
+
+    async getCoverArtUrl(id: string): Promise<string | null> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_COVER_ART_URL, id)
+    },
+
+    generateStreamUrl(id: string): Promise<string | null> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_STREAM_BASE_URL, id)
+    },
+
+    async getMostPlayed(options?: {
+      offset: string
+      size: string
+    }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_MOST_PLAYED, options)
+    },
+
+    async getRandomAlbums(options?: { size: string }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_RANDOM_ALBUMS, options)
+    },
+
+    async search(options: {
+      query: string
+      offset?: number
+      size?: number
+    }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_SEARCH_RESULTS, options)
+    },
+
+    async getStarred(): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_STARRED)
+    },
+
+    async star(options: {
+      id?: string
+      artistId?: string
+      albumId?: string
+    }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.STAR, options)
+    },
+
+    async unstar(options: {
+      id?: string
+      artistId?: string
+      albumId?: string
+    }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.UNSTAR, options)
     },
 
     // Event listeners
-    onStateChanged(callback: (event: RecorderStateChanged) => void): () => void {
-      const listener = (_event: Electron.IpcRendererEvent, data: RecorderStateChanged) => {
-        callback(data)
+    onCredentialsChanged(
+      callback: (status: { configured: boolean; username?: string }) => void
+    ): () => void {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        status: { configured: boolean; username?: string }
+      ) => {
+        callback(status)
       }
-      ipcRenderer.on(RecorderChannels.STATE_CHANGED, listener)
+      ipcRenderer.on(SubsonicChannels.CREDENTIALS_CHANGED, listener)
 
       // Return cleanup function
       return () => {
-        ipcRenderer.removeListener(RecorderChannels.STATE_CHANGED, listener)
+        ipcRenderer.removeListener(SubsonicChannels.CREDENTIALS_CHANGED, listener)
       }
     }
   }

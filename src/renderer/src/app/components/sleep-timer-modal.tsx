@@ -1,63 +1,52 @@
-"use client";
+'use client'
 
-import React, { useState } from "react";
-import { Icon } from "@mdi/react";
-import { mdiClose, mdiTimerOutline, mdiPlus, mdiStop, mdiCheck } from "@mdi/js";
-import {
-  useSleepTimer,
-  SleepTimerPreset,
-} from "../contexts/sleep-timer-context";
+import React, { useState } from 'react'
+import { Icon } from '@mdi/react'
+import { mdiClose, mdiTimerOutline, mdiPlus, mdiStop, mdiCheck } from '@mdi/js'
+import { useSleepTimer, SleepTimerPreset } from '../contexts/sleep-timer-context'
 
 interface SleepTimerModalProps {
-  onClose: () => void;
+  onClose: () => void
 }
 
 const PRESETS: { value: SleepTimerPreset; label: string }[] = [
-  { value: 15, label: "15 min" },
-  { value: 30, label: "30 min" },
-  { value: 45, label: "45 min" },
-  { value: 60, label: "1 hour" },
-  { value: 90, label: "1.5 hours" },
-  { value: 120, label: "2 hours" },
-];
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 45, label: '45 min' },
+  { value: 60, label: '1 hour' },
+  { value: 90, label: '1.5 hours' },
+  { value: 120, label: '2 hours' }
+]
 
-export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
-  onClose,
-}) => {
-  const {
-    isActive,
-    selectedPreset,
-    startPreset,
-    stopTimer,
-    addTime,
-    formatTimeRemaining,
-  } = useSleepTimer();
+export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({ onClose }) => {
+  const { isActive, selectedPreset, startPreset, stopTimer, addTime, formatTimeRemaining } =
+    useSleepTimer()
 
-  const [customMinutes, setCustomMinutes] = useState<string>("");
-  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState<string>('')
+  const [showCustomInput, setShowCustomInput] = useState(false)
 
   const handlePresetClick = (preset: SleepTimerPreset) => {
-    if (typeof preset === "number") {
-      startPreset(preset);
-      onClose();
+    if (typeof preset === 'number') {
+      startPreset(preset)
+      onClose()
     }
-  };
+  }
 
   const handleCustomSubmit = () => {
-    const minutes = parseInt(customMinutes, 10);
+    const minutes = parseInt(customMinutes, 10)
     if (!isNaN(minutes) && minutes > 0) {
-      startPreset("custom", minutes);
-      onClose();
+      startPreset('custom', minutes)
+      onClose()
     }
-  };
+  }
 
   const handleAddTime = (minutes: number) => {
-    addTime(minutes);
-  };
+    addTime(minutes)
+  }
 
   const handleStopTimer = () => {
-    stopTimer();
-  };
+    stopTimer()
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -80,9 +69,7 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
             <div className="modal-content p-4">
               <div className="text-center mb-3">
                 <p className="text-zinc-400 text-sm mb-2">Time remaining</p>
-                <p className="text-4xl font-bold text-white font-mono">
-                  {formatTimeRemaining()}
-                </p>
+                <p className="text-4xl font-bold text-white font-mono">{formatTimeRemaining()}</p>
               </div>
 
               <div className="flex flex-wrap gap-2 justify-center">
@@ -131,9 +118,7 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
                     key={preset.value}
                     onClick={() => handlePresetClick(preset.value)}
                     className={`px-3 py-2 rounded-md text-white font-medium use-transition ${
-                      selectedPreset === preset.value
-                        ? "raised-interface-lg"
-                        : "raised-interface"
+                      selectedPreset === preset.value ? 'raised-interface-lg' : 'raised-interface'
                     }`}
                   >
                     {preset.label}
@@ -163,8 +148,8 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
                   </button>
                   <button
                     onClick={() => {
-                      setShowCustomInput(false);
-                      setCustomMinutes("");
+                      setShowCustomInput(false)
+                      setCustomMinutes('')
                     }}
                     className="px-4 py-2 btn rounded-md text-white use-transition"
                   >
@@ -184,5 +169,5 @@ export const SleepTimerModal: React.FC<SleepTimerModalProps> = ({
         )}
       </div>
     </div>
-  );
-};
+  )
+}

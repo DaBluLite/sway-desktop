@@ -17,15 +17,17 @@ import {
   AudioPlayerError,
   AudioPlayerChannels
 } from '../../types/audio-player'
+import { SubsonicSong } from '../../types/subsonic'
+import { unlink } from 'fs/promises'
 
 export class AudioPlayerService implements IAudioPlayerService {
   private state: AudioPlayerState = { ...DEFAULT_AUDIO_STATE }
   private registeredWindows = new Set<number>()
   private retryConfig: RetryConfig = DEFAULT_RETRY_CONFIG
-  private retryTimeouts = new Map<Station, NodeJS.Timeout>()
-  private retryCounters = new Map<Station, number>()
+  private retryTimeouts = new Map<Station | SubsonicSong, NodeJS.Timeout>()
+  private retryCounters = new Map<Station | SubsonicSong, number>()
   private persistenceFilePath: string
-  private mpvPlayer: typeof NodeMPV = null
+  private mpvPlayer: NodeMPV | null = null
   private isInitializing = false
 
   constructor() {
@@ -53,15 +55,26 @@ export class AudioPlayerService implements IAudioPlayerService {
       console.log('Initializing node-mpv player...')
 
       // Create MPV instance with audio-only configuration
+      try {
+        await unlink('/tmp/sway-desktop-mpv-socket')
+      } catch {
+        // doesn't exist, that's fine
+      }
       this.mpvPlayer = new NodeMPV({
         audio_only: true,
         socket: '/tmp/sway-desktop-mpv-socket',
         debug: false,
+        time_update: 1,
         verbose: false
       })
 
+      await this.mpvPlayer.start()
+
       // Set up event listeners
       this.setupMPVEventListeners()
+
+      // Apply initial audio settings
+      await this.applyAudioSettings()
 
       console.log('Node-MPV player initialized successfully')
     } catch (error) {
@@ -74,6 +87,18 @@ export class AudioPlayerService implements IAudioPlayerService {
 
   private setupMPVEventListeners(): void {
     if (!this.mpvPlayer) return
+
+    this.mpvPlayer.on('status', (status) => {
+      if (status['duration'] !== undefined) {
+        this.setState({ duration: status['duration'] }, 'renderer-event')
+      }
+    })
+
+    // Progress tracking via observed properties
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.mpvPlayer.on('timeposition', (time: any) => {
+      this.setState({ currentTime: time }, 'renderer-event')
+    })
 
     // Playback started
     this.mpvPlayer.on('started', () => {
@@ -90,6 +115,9 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Reset retry counter on successful play
       if (this.state.currentStation) {
         this.retryCounters.delete(this.state.currentStation)
+      }
+      if (this.state.currentSong) {
+        this.retryCounters.delete(this.state.currentSong)
       }
     })
 
@@ -145,11 +173,97 @@ export class AudioPlayerService implements IAudioPlayerService {
       }
     })
 
+    // End of file reached
+    this.mpvPlayer.on('ended', () => {
+      console.log('MPV: Playback ended (EOF)')
+      this.setState(
+        {
+          isPlaying: false,
+          isLoading: false
+        },
+        'ended'
+      )
+    })
+
     // Error events
     this.mpvPlayer.on('crashed', () => {
       console.error('MPV: Player crashed')
       this.handlePlaybackError('MPV player crashed')
     })
+  }
+
+  private async applyAudioSettings(): Promise<void> {
+    if (!this.mpvPlayer) return
+
+    try {
+      const { gaplessEnabled, exclusiveEnabled, bitPerfectEnabled, audioDevice } = this.state
+
+      // 1. Gapless
+      await this.mpvPlayer.setProperty('gapless-audio', gaplessEnabled ? 'yes' : 'no')
+
+      // 2. Audio device
+      if (audioDevice) {
+        await this.mpvPlayer.setProperty('audio-device', audioDevice)
+      }
+
+      // 3. Exclusive output
+      if (process.platform === 'win32') {
+        await this.mpvPlayer.setProperty('audio-exclusive', exclusiveEnabled ? 'yes' : 'no')
+      } else {
+        // On Linux, exclusive access is achieved by using the hw: ALSA device directly.
+        // If a specific hw: device is selected, that's already exclusive.
+        // PipeWire/PulseAudio don't support audio-exclusive, it's a no-op or error.
+      }
+
+      // 4. Bit-perfect
+      if (bitPerfectEnabled) {
+        await this.mpvPlayer.setProperty('audio-resample', 'no')
+        await this.mpvPlayer.setProperty('audio-pitch-correction', 'no')
+        await this.mpvPlayer.setProperty('audio-channels', 'auto-safe')
+        // Clear any audio filters that would cause resampling
+        await this.mpvPlayer.setProperty('af', '')
+        // Don't normalize or adjust volume at the software level
+        await this.mpvPlayer.setProperty('replaygain', 'no')
+      } else {
+        await this.mpvPlayer.setProperty('audio-resample', 'yes')
+        await this.mpvPlayer.setProperty('audio-pitch-correction', 'yes')
+      }
+
+      if (process.platform !== 'win32' && exclusiveEnabled && audioDevice) {
+        // Promote plughw to hw for exclusive access
+        const exclusiveDevice = audioDevice.replace('alsa/plughw:', 'alsa/hw:')
+        await this.mpvPlayer.setProperty('audio-device', exclusiveDevice)
+      }
+
+      console.log('Audio settings applied:', {
+        gaplessEnabled,
+        exclusiveEnabled,
+        bitPerfectEnabled,
+        audioDevice
+      })
+    } catch (error) {
+      console.error('Failed to apply audio settings:', error)
+    }
+  }
+
+  async updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult> {
+    this.setState(settings)
+    await this.applyAudioSettings()
+    return { success: true, state: this.getState() }
+  }
+
+  async getAudioDevices(): Promise<AudioDevice[]> {
+    if (!this.mpvPlayer) return []
+    try {
+      const devices = await this.mpvPlayer.getProperty('audio-device-list')
+      return (devices || []).map((d: any) => ({
+        name: d.name,
+        description: d.description
+      }))
+    } catch (error) {
+      console.error('Failed to get audio devices:', error)
+      return []
+    }
   }
 
   // State management
@@ -178,8 +292,13 @@ export class AudioPlayerService implements IAudioPlayerService {
   private shouldPersistStateChange(previous: AudioPlayerState, current: AudioPlayerState): boolean {
     return (
       previous.currentStation?.id !== current.currentStation?.id ||
+      previous.currentSong?.id !== current.currentSong?.id ||
       previous.volume !== current.volume ||
-      previous.isMuted !== current.isMuted
+      previous.isMuted !== current.isMuted ||
+      previous.gaplessEnabled !== current.gaplessEnabled ||
+      previous.exclusiveEnabled !== current.exclusiveEnabled ||
+      previous.bitPerfectEnabled !== current.bitPerfectEnabled ||
+      previous.audioDevice !== current.audioDevice
     )
   }
 
@@ -228,8 +347,12 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Update state to loading
       this.setState({
         currentStation: station,
+        currentSong: null,
         isLoading: true,
-        error: null
+        isSeekable: false,
+        error: null,
+        currentTime: 0,
+        duration: null
       })
 
       // Load the stream using load for URLs
@@ -267,6 +390,116 @@ export class AudioPlayerService implements IAudioPlayerService {
       return {
         success: false,
         error: audioError.message,
+        state: this.getState()
+      }
+    }
+  }
+
+  async playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult> {
+    try {
+      // Ensure MPV is initialized
+      if (!this.mpvPlayer && !this.isInitializing) {
+        await this.initializeMPV()
+      }
+
+      if (!this.mpvPlayer) {
+        throw new AudioPlayerError('MPV player not available', 'PLAYBACK_FAILED')
+      }
+
+      // Clear any existing retry for previous item
+      this.clearRetryTimeout()
+      this.retryCounters.delete(song)
+
+      console.log(`Playing song with MPV: ${song.title} (${streamUrl})`)
+
+      // Update state to loading
+      this.setState({
+        currentSong: song,
+        currentStation: null,
+        isLoading: true,
+        isSeekable: true,
+        error: null,
+        currentTime: 0,
+        duration: song.duration || null
+      })
+
+      // Load the stream
+      await this.mpvPlayer.load(streamUrl, 'replace')
+
+      // Apply current volume
+      const volumeLevel = this.state.isMuted ? 0 : Math.round(this.state.volume * 100)
+      await this.mpvPlayer.volume(volumeLevel)
+
+      // Start playback
+      await this.mpvPlayer.play()
+
+      return {
+        success: true,
+        state: this.getState()
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to play song'
+      this.setState(
+        {
+          error: errorMessage,
+          isLoading: false,
+          isPlaying: false
+        },
+        'error'
+      )
+
+      return {
+        success: false,
+        error: errorMessage,
+        state: this.getState()
+      }
+    }
+  }
+
+  async resume(): Promise<AudioPlayerCommandResult> {
+    try {
+      if (this.mpvPlayer) {
+        await this.mpvPlayer.play()
+      }
+
+      this.setState({
+        isPlaying: true,
+        isLoading: false
+      })
+
+      return {
+        success: true,
+        state: this.getState()
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resume'
+      return {
+        success: false,
+        error: errorMessage,
+        state: this.getState()
+      }
+    }
+  }
+
+  async seek(position: number): Promise<AudioPlayerCommandResult> {
+    try {
+      if (this.mpvPlayer) {
+        await this.mpvPlayer.seek(position, 'absolute')
+      }
+
+      this.setState({
+        currentTime: position
+      })
+
+      return {
+        success: true,
+        state: this.getState()
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to seek'
+      return {
+        success: false,
+        error: errorMessage,
         state: this.getState()
       }
     }
@@ -310,7 +543,10 @@ export class AudioPlayerService implements IAudioPlayerService {
         isPlaying: false,
         isLoading: false,
         currentStation: null,
-        error: null
+        currentSong: null,
+        error: null,
+        currentTime: 0,
+        duration: null
       })
 
       return {
@@ -365,10 +601,10 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Apply mute to MPV player
       if (this.mpvPlayer) {
         if (newMutedState) {
-          await this.mpvPlayer.mute()
+          await this.mpvPlayer.mute(true)
           console.log('MPV: Audio muted')
         } else {
-          await this.mpvPlayer.unmute()
+          await this.mpvPlayer.mute(false)
           console.log('MPV: Audio unmuted')
         }
       }
@@ -610,10 +846,15 @@ export class AudioPlayerService implements IAudioPlayerService {
   // Persistence
   async saveState(): Promise<void> {
     try {
-      const persistedState: PersistedAudioState = {
+      const persistedState: any = {
         currentStation: this.state.currentStation,
+        currentSong: this.state.currentSong,
         volume: this.state.volume,
-        isMuted: this.state.isMuted
+        isMuted: this.state.isMuted,
+        gaplessEnabled: this.state.gaplessEnabled,
+        exclusiveEnabled: this.state.exclusiveEnabled,
+        bitPerfectEnabled: this.state.bitPerfectEnabled,
+        audioDevice: this.state.audioDevice
       }
 
       await fs.writeFile(this.persistenceFilePath, JSON.stringify(persistedState, null, 2), 'utf-8')
@@ -626,14 +867,20 @@ export class AudioPlayerService implements IAudioPlayerService {
   async loadState(): Promise<void> {
     try {
       const data = await fs.readFile(this.persistenceFilePath, 'utf-8')
-      const persistedState: PersistedAudioState = JSON.parse(data)
+      const persistedState: any = JSON.parse(data)
 
       // Restore persisted state, but keep dynamic state as defaults
       this.state = {
         ...DEFAULT_AUDIO_STATE,
         currentStation: persistedState.currentStation,
+        currentSong: persistedState.currentSong,
         volume: persistedState.volume ?? DEFAULT_AUDIO_STATE.volume,
-        isMuted: persistedState.isMuted ?? DEFAULT_AUDIO_STATE.isMuted
+        isMuted: persistedState.isMuted ?? DEFAULT_AUDIO_STATE.isMuted,
+        gaplessEnabled: persistedState.gaplessEnabled ?? DEFAULT_AUDIO_STATE.gaplessEnabled,
+        exclusiveEnabled: persistedState.exclusiveEnabled ?? DEFAULT_AUDIO_STATE.exclusiveEnabled,
+        bitPerfectEnabled:
+          persistedState.bitPerfectEnabled ?? DEFAULT_AUDIO_STATE.bitPerfectEnabled,
+        audioDevice: persistedState.audioDevice ?? DEFAULT_AUDIO_STATE.audioDevice
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

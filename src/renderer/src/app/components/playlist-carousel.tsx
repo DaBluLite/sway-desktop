@@ -2,26 +2,18 @@ import { useRef, useCallback, useState, useEffect } from 'react'
 import { Icon } from '@mdi/react'
 import { mdiChevronLeft, mdiChevronRight } from '@mdi/js'
 import { PlaylistCard } from './playlist-card'
-import { Playlist } from '../contexts/playlists-context'
+import { SubsonicPlaylist } from '../../../../types/subsonic'
 
 interface PlaylistCarouselProps {
   title: string
-  playlists: Playlist[]
-  onPlaylistSelect?: (playlist: Playlist) => void
-  onPlaylistEdit?: (playlist: Playlist) => void
-  onPlaylistDelete?: (playlistId: string) => void
-  onPlaylistDuplicate?: (playlistId: string) => void
-  onPlaylistShare?: (playlist: Playlist) => void
+  playlists: SubsonicPlaylist[]
+  onPlay: (playlist: SubsonicPlaylist) => void
 }
 
 export const PlaylistCarousel: React.FC<PlaylistCarouselProps> = ({
   title,
   playlists,
-  onPlaylistSelect,
-  onPlaylistEdit,
-  onPlaylistDelete,
-  onPlaylistDuplicate,
-  onPlaylistShare
+  onPlay
 }: PlaylistCarouselProps) => {
   const [showLeftArrow, setShowLeftArrow] = useState(false)
   const [showRightArrow, setShowRightArrow] = useState(false)
@@ -89,15 +81,7 @@ export const PlaylistCarousel: React.FC<PlaylistCarouselProps> = ({
         <div className="playlist-carousel-scroll" ref={scrollContainerRef}>
           <div className="playlist-carousel-content">
             {playlists.map((playlist) => (
-              <PlaylistCard
-                key={playlist.id}
-                playlist={playlist}
-                onSelect={onPlaylistSelect}
-                onEdit={onPlaylistEdit}
-                onDelete={onPlaylistDelete}
-                onDuplicate={onPlaylistDuplicate}
-                onShare={onPlaylistShare}
-              />
+              <PlaylistCard key={playlist.id} playlist={playlist} onPlay={onPlay} />
             ))}
           </div>
         </div>

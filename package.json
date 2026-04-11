@@ -29,8 +29,10 @@
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-router": "^1.168.10",
     "@tanstack/react-router-devtools": "^1.166.11",
+    "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",
-    "node-mpv": "^1.5.0",
+    "lucide-react": "^1.8.0",
+    "node-mpv": "2.0.0-beta.2",
     "radio-browser-api": "^6.0.3",
     "react-castjs": "^1.0.2",
     "tailwindcss": "^4.2.2"
