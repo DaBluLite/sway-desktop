@@ -27,7 +27,7 @@ linux:
   maintainer: DaBluLite
   category: Utility
 flatpak:
-  license: MIT
+  license: LICENSE.md
   runtimeVersion: 23.08
 appImage:
   artifactName: ${name}-${version}.${ext}
