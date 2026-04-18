@@ -30,7 +30,7 @@ jobs:
           git checkout HEAD~1 -- package.json 2>/dev/null || echo "First commit"
           PREVIOUS_VERSION=$(jq -r '.version' package.json 2>/dev/null || echo "0.0.0")
           git checkout HEAD -- package.json
-          
+
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
             echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
@@ -51,7 +51,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -91,6 +91,7 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.tar.gz
+            dist/*.flatpak
 
       - name: Upload Windows artifacts
         if: matrix.os == 'windows-latest'
@@ -116,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
