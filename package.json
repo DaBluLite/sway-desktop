@@ -1,6 +1,6 @@
 {
   "name": "sway-desktop",
-  "version": "2.0.1",
+  "version": "2.0.0",
   "description": "A new way to listen to and explore radio stations worldwide.",
   "main": "./out/main/index.js",
   "author": "DaBluLite",

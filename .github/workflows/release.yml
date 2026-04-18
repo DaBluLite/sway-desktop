@@ -148,4 +148,4 @@ jobs:
           files: |
             artifacts/**/*
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
