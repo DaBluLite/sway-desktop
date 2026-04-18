@@ -2,12 +2,13 @@ import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { SubsonicAlbum } from '../../../../../../types/subsonic'
 import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
-import { Play, Shuffle } from 'lucide-react'
+import { EllipsisVertical, Play, Shuffle } from 'lucide-react'
 import Icon from '@mdi/react'
 import { mdiHeart, mdiHeartOutline } from '@mdi/js'
 import { useLibrary } from '@renderer/contexts/library-context'
 import SongRow from '@renderer/components/song-row'
 import SongListHeader from '@renderer/components/song-list-header'
+import { useContextMenu } from '@renderer/contexts/context-menu-context'
 
 export const Route = createFileRoute('/album/$albumId/')({
   component: AlbumPage
@@ -17,8 +18,10 @@ function AlbumPage() {
   const { albumId } = Route.useParams()
   const [album, setAlbum] = useState<SubsonicAlbum>()
   const [albumCoverUrl, setAlbumCoverUrl] = useState<string>()
-  const { playSong, shufflePlay, currentSong } = useAudioPlayer()
+  const { playSong, shufflePlay } = useAudioPlayer()
+  const { openContextMenu } = useContextMenu()
   const { isStarred, star, unstar } = useLibrary()
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([])
 
   useEffect(() => {
     async function fetchAlbum() {
@@ -39,6 +42,16 @@ function AlbumPage() {
     }
     fetchAlbum()
   }, [albumId])
+
+  useEffect(() => {
+    function handleClickOutside() {
+      setSelectedSongs([])
+    }
+    window.addEventListener('click', handleClickOutside)
+    return () => {
+      window.removeEventListener('click', handleClickOutside)
+    }
+  }, [])
 
   return (
     <div className="flex flex-col px-12 w-full h-[calc(100vh-64px)] gap-2">
@@ -101,21 +114,52 @@ function AlbumPage() {
               className="size-5"
             />
           </button>
+          <button
+            className="btn p-3 rounded-full ml-auto cursor-pointer"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              openContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                items: [
+                  {
+                    text: 'Play Next',
+                    onClick: () => window.api.audioPlayer.addToQueue(album?.song || [], 'next')
+                  },
+                  {
+                    text: 'Add to Queue',
+                    onClick: () => window.api.audioPlayer.addToQueue(album?.song || [], 'last')
+                  }
+                ],
+                onClose: () => {}
+              })
+            }}
+          >
+            <EllipsisVertical className="size-5" />
+          </button>
         </div>
       </div>
       <SongListHeader fields={{ artwork: false, album: false }} />
       <div className="overflow-y-auto flex flex-col pb-35">
-        {album?.song?.map((song, i) => (
+        {album?.song?.map((song) => (
           <SongRow
+            onSelect={(e) => {
+              e.stopPropagation()
+              if (e.ctrlKey || e.metaKey) {
+                // Toggle selection
+                setSelectedSongs((prev) =>
+                  prev.includes(song.id) ? prev.filter((id) => id !== song.id) : [...prev, song.id]
+                )
+              } else {
+                setSelectedSongs([song.id])
+              }
+            }}
+            selected={selectedSongs.includes(song.id)}
             key={song.id}
             song={song}
-            currentSong={currentSong}
-            i={i}
+            i={song.track - 1}
             playlist={album.song || []}
-            isStarred={isStarred}
-            playSong={playSong}
-            star={star}
-            unstar={unstar}
             fields={{
               artwork: false,
               album: false

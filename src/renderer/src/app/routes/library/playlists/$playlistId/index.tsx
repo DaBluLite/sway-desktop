@@ -1,11 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { SubsonicPlaylist } from '../../../../../../../types/subsonic'
+import { SubsonicPlaylist, SubsonicSong } from '../../../../../../../types/subsonic'
 import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
-import { Play, Shuffle } from 'lucide-react'
-import { useLibrary } from '@renderer/contexts/library-context'
+import { ListX, Play, Shuffle } from 'lucide-react'
 import SongRow from '@renderer/components/song-row'
 import SongListHeader from '@renderer/components/song-list-header'
+import { SongThumbnailGrid } from '@renderer/components/song-thumbnail-grid'
+import { usePlaylists } from '@renderer/contexts/playlists-context'
 
 export const Route = createFileRoute('/library/playlists/$playlistId/')({
   component: AlbumPage
@@ -14,8 +15,9 @@ export const Route = createFileRoute('/library/playlists/$playlistId/')({
 function AlbumPage() {
   const { playlistId } = Route.useParams()
   const [playlist, setPlaylist] = useState<SubsonicPlaylist>()
-  const { playSong, shufflePlay, currentSong } = useAudioPlayer()
-  const { isStarred, star, unstar } = useLibrary()
+  const { playSong, shufflePlay } = useAudioPlayer()
+  const { removeSongFromPlaylist } = usePlaylists()
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([])
 
   useEffect(() => {
     async function fetchAlbum() {
@@ -34,12 +36,22 @@ function AlbumPage() {
     fetchAlbum()
   }, [playlistId])
 
+  useEffect(() => {
+    function handleClickOutside() {
+      setSelectedSongs([])
+    }
+    window.addEventListener('click', handleClickOutside)
+    return () => {
+      window.removeEventListener('click', handleClickOutside)
+    }
+  }, [])
+
   return (
     <div className="flex flex-col px-12 w-full h-[calc(100vh-64px)] gap-2">
       <div className="flex gap-8 items-end mb-6">
-        <div className="w-48 h-48 bg-zinc-300 rounded flex items-center justify-center">
-          <span className="text-zinc-500">No Cover</span>
-        </div>
+        <SongThumbnailGrid
+          songs={(playlist || { entry: [] as SubsonicSong[] }).entry as SubsonicSong[]}
+        />
         <div>
           <h1 className="text-3xl font-bold">{playlist?.name}</h1>
           <p className="text-sm text-zinc-700 dark:text-zinc-500">{playlist?.songCount} songs</p>
@@ -63,25 +75,39 @@ function AlbumPage() {
           </button>
         </div>
       </div>
-      <SongListHeader fields={{ artwork: false, album: false }} />
+      <SongListHeader />
       <div className="overflow-y-auto flex flex-col pb-35">
         {playlist &&
           playlist.entry &&
           playlist.entry.map((song, i) => (
             <SongRow
+              onSelect={(e) => {
+                e.stopPropagation()
+                if (e.ctrlKey || e.metaKey) {
+                  // Toggle selection
+                  setSelectedSongs((prev) =>
+                    prev.includes(song.id)
+                      ? prev.filter((id) => id !== song.id)
+                      : [...prev, song.id]
+                  )
+                } else {
+                  setSelectedSongs([song.id])
+                }
+              }}
+              selected={selectedSongs.includes(song.id)}
               key={song.id}
               song={song}
-              currentSong={currentSong}
               i={i}
               playlist={playlist.entry || []}
-              isStarred={isStarred}
-              playSong={playSong}
-              star={star}
-              unstar={unstar}
-              fields={{
-                artwork: false,
-                album: false
-              }}
+              actions={[
+                {
+                  text: 'Remove from Playlist',
+                  onClick: () => removeSongFromPlaylist(playlistId, song.id),
+                  Icon() {
+                    return <ListX className="size-4" />
+                  }
+                }
+              ]}
             />
           ))}
       </div>

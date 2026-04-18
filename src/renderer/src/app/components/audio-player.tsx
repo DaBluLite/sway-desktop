@@ -12,19 +12,15 @@ import {
   mdiSpeaker,
   mdiHeart,
   mdiHeartOutline,
-  mdiTimerOutline,
   mdiPause,
-  mdiArrowExpand,
   mdiSkipPrevious,
   mdiSkipNext,
   mdiShuffle
 } from '@mdi/js'
 import { useFavourites } from '../contexts/favourites-context'
-import { useSleepTimer } from '../contexts/sleep-timer-context'
-import { useModal } from '../contexts/modal-context'
 import getTags from '../utils/get-tags'
 import { useMediaPlayerScreen } from '../contexts/media-player-screen-context'
-import { Repeat, Repeat1 } from 'lucide-react'
+import { Maximize2, Repeat, Repeat1 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useLibrary } from '@renderer/contexts/library-context'
 
@@ -56,8 +52,6 @@ export const AudioPlayer: React.FC = () => {
   const { isFavourite, toggleFavourite } = useFavourites()
   const { isStarred, star, unstar } = useLibrary()
   const [songArt, setSongArt] = useState<string | null>(null)
-  const { isActive: sleepTimerActive, formatTimeRemaining } = useSleepTimer()
-  const { openSleepTimerModal } = useModal()
   const [isFetchingSong, setIsFetchingSong] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const { toggle, isOpen } = useMediaPlayerScreen()
@@ -359,27 +353,16 @@ export const AudioPlayer: React.FC = () => {
               background: `linear-gradient(to right, var(--range-bg) 0%, var(--range-bg) ${volume * 100}%, var(--range-bg-opacity) ${volume * 100}%, var(--range-bg-opacity) 100%)`
             }}
           />
-          <button
-            onClick={() => openSleepTimerModal()}
-            className={`audio-player-btn relative ${sleepTimerActive ? 'text-green-400' : ''}`}
-            aria-label="Sleep timer"
-            title={sleepTimerActive ? `Sleep timer: ${formatTimeRemaining()}` : 'Set sleep timer'}
-          >
-            <Icon path={mdiTimerOutline} size={1} />
-            {sleepTimerActive && (
-              <span className="absolute -top-1 -right-1 text-[10px] font-bold bg-green-500 text-white rounded-full px-1 min-w-4.5 text-center">
-                {formatTimeRemaining().split(':')[0]}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={toggle}
-            className={`audio-player-btn`}
-            aria-label="Open Media Screen"
-            title={'Open Media Screen'}
-          >
-            <Icon path={mdiArrowExpand} size={1} />
-          </button>
+          {currentSong && (
+            <button
+              onClick={toggle}
+              className={`audio-player-btn`}
+              aria-label="Open Media Screen"
+              title={'Open Media Screen'}
+            >
+              <Maximize2 className="size-4" />
+            </button>
+          )}
         </div>
       </div>
     </>

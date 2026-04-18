@@ -11,9 +11,6 @@ function Settings() {
         <Link to="/settings" activeOptions={{ exact: true }} className="settings-sidebar-item">
           System
         </Link>
-        <Link to="/settings/appearance" className="settings-sidebar-item">
-          Appearance
-        </Link>
         <Link to="/settings/audio" className="settings-sidebar-item">
           Audio
         </Link>

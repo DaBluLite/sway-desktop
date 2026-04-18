@@ -1,31 +1,38 @@
-import { mdiHeart, mdiHeartOutline, mdiPlaylistMusic } from '@mdi/js'
+import { mdiHeart, mdiHeartOutline } from '@mdi/js'
 import Icon from '@mdi/react'
 import { Link } from '@tanstack/react-router'
-import { EllipsisVertical, Play, Volume2 } from 'lucide-react'
+import {
+  Disc3,
+  EllipsisVertical,
+  ListEnd,
+  ListMusic,
+  ListPlus,
+  MicVocal,
+  Play,
+  Volume2
+} from 'lucide-react'
 import { SubsonicSong } from '../../../../types/subsonic'
 import { useEffect, useState } from 'react'
 import { useModal } from '@renderer/contexts/modal-context'
-import { useContextMenu } from '@renderer/contexts/context-menu-context'
+import { ContextMenuItem, useContextMenu } from '@renderer/contexts/context-menu-context'
+import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
+import { useLibrary } from '@renderer/contexts/library-context'
 
 function SongRow({
   song,
   i,
   playlist,
-  playSong,
-  isStarred,
-  star,
-  unstar,
-  currentSong,
-  fields = { artwork: true, album: true }
+  fields = { artwork: true, album: true },
+  actions = [],
+  onSelect = () => {},
+  selected = false
 }: {
+  selected: boolean
+  actions?: ContextMenuItem[]
   song: SubsonicSong
   i: number
   playlist: SubsonicSong[]
-  playSong: (songs: SubsonicSong[], songId: string) => void
-  isStarred: (id: string, type: 'song' | 'album') => boolean
-  star: ({ id }: { id: string }) => void
-  unstar: ({ id }: { id: string }) => void
-  currentSong: SubsonicSong | null
+  onSelect?: (e: React.MouseEvent<HTMLDivElement>) => void
   fields?: {
     artwork: boolean
     album: boolean
@@ -34,6 +41,8 @@ function SongRow({
   const [art, setArt] = useState<string>('')
   const { openPlaylistModal } = useModal()
   const { openContextMenu } = useContextMenu()
+  const { playSong, currentSong } = useAudioPlayer()
+  const { isStarred, star, unstar } = useLibrary()
 
   useEffect(() => {
     let isMounted = true
@@ -50,13 +59,66 @@ function SongRow({
     }
   }, [song.id])
 
+  function handleContextMenu(e: React.MouseEvent<HTMLDivElement | HTMLButtonElement>) {
+    e.stopPropagation()
+    openContextMenu({
+      onClose: () => {},
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        ...actions,
+        {
+          text: 'Add to Playlist',
+          onClick: () => openPlaylistModal(song),
+          Icon() {
+            return <ListMusic className="size-3.5" />
+          }
+        },
+        {
+          text: 'Go to Artist',
+          onClick: () => {},
+          Icon() {
+            return <MicVocal className="size-3.5" />
+          }
+        },
+        {
+          text: 'Go to Album',
+          onClick: () => {},
+          Icon() {
+            return <Disc3 className="size-3.5" />
+          }
+        },
+        {
+          text: 'Play Next',
+          onClick: () => {
+            window.api.audioPlayer.addToQueue([song], 'next')
+          },
+          Icon() {
+            return <ListPlus className="size-3.5" />
+          }
+        },
+        {
+          text: 'Add to Queue',
+          onClick: () => {
+            window.api.audioPlayer.addToQueue([song], 'last')
+          },
+          Icon() {
+            return <ListEnd className="size-3.5" />
+          }
+        }
+      ]
+    })
+  }
+
   return (
     <div
       onDoubleClick={() => {
         playSong(playlist, song.id)
       }}
+      onClick={(e) => onSelect(e)}
+      onContextMenu={handleContextMenu}
       className={
-        `flex items-center h-12 shrink-0 group rounded-sm hover:bg-theme-bg/50 hover:bg-zinc-700/25! use-transition ${currentSong?.id === song.id ? 'playing' : ''} ` +
+        `flex items-center h-12 shrink-0 group rounded-sm hover:bg-theme-bg/50 hover:bg-zinc-700/25! ${selected ? 'bg-second-layer-thin-active! dark:bg-second-layer-thin-active-dark!' : ''} use-transition ${currentSong?.id === song.id ? 'playing' : ''} ` +
         (i % 2 === 0 ? ' bg-zinc-700/20' : '')
       }
     >
@@ -114,26 +176,7 @@ function SongRow({
         {Math.floor(song.duration / 60)}:{(song.duration % 60).toString().padStart(2, '0')}
       </p>
       <div className="flex items-center justify-end gap-3 basis-25 pr-2.75 grow-0 shrink-0">
-        <button
-          className="cursor-pointer use-theme-text opacity-50"
-          onClick={(e) => {
-            e.stopPropagation()
-            openContextMenu({
-              onClose: () => {},
-              x: e.clientX,
-              y: e.clientY,
-              items: [
-                {
-                  text: 'Add to Playlist',
-                  onClick: () => openPlaylistModal(song),
-                  Icon() {
-                    return <Icon path={mdiPlaylistMusic} size={0.8} className="text-white" />
-                  }
-                }
-              ]
-            })
-          }}
-        >
+        <button className="cursor-pointer use-theme-text opacity-50" onClick={handleContextMenu}>
           <EllipsisVertical className="size-3.5" />
         </button>
         <button

@@ -1,9 +1,9 @@
 import { Station } from 'radio-browser-api'
-import { Playlist } from '../contexts/playlists-context'
 import { HistoryEntry } from '../contexts/history-context'
+import { CuratedCollection } from '@renderer/contexts/curations-context'
 
 // Version for data format compatibility
-const EXPORT_VERSION = 2
+const EXPORT_VERSION = 3
 
 export interface ExportData {
   version: number
@@ -11,7 +11,7 @@ export interface ExportData {
   appName: string
   data: {
     favourites?: Station[]
-    playlists?: Playlist[]
+    curations?: CuratedCollection[]
     history?: HistoryEntry[]
     settings?: {
       theme?: 'light' | 'dark' | 'system'
@@ -37,7 +37,7 @@ export interface ImportResult {
  */
 export function createExportData(options: {
   favourites?: Station[]
-  playlists?: Playlist[]
+  curations?: CuratedCollection[]
   history?: HistoryEntry[]
   settings?: {
     theme?: 'light' | 'dark' | 'system'
@@ -49,7 +49,7 @@ export function createExportData(options: {
     appName: 'Sway Radio',
     data: {
       ...(options.favourites && { favourites: options.favourites }),
-      ...(options.playlists && { playlists: options.playlists }),
+      ...(options.curations && { curations: options.curations }),
       ...(options.history && { history: options.history }),
       ...(options.settings && { settings: options.settings })
     }
@@ -129,16 +129,16 @@ export function isValidStation(station: unknown): station is Station {
 }
 
 /**
- * Validates playlist data
+ * Validates curated collection data
  */
-function isValidPlaylist(playlist: unknown): playlist is Playlist {
-  if (!playlist || typeof playlist !== 'object') return false
-  const p = playlist as Record<string, unknown>
-  return typeof p.id === 'string' && typeof p.name === 'string' && Array.isArray(p.stations)
+function isValidCuratedCollection(collection: unknown): collection is CuratedCollection {
+  if (!collection || typeof collection !== 'object') return false
+  const c = collection as Record<string, unknown>
+  return typeof c.id === 'string' && typeof c.name === 'string' && Array.isArray(c.stations)
 }
 
 /**
- * Validates history entry data
+ * validates history entry data
  */
 function isValidHistoryEntry(entry: unknown): entry is HistoryEntry {
   if (!entry || typeof entry !== 'object') return false
@@ -172,22 +172,22 @@ export function validateImportData(data: ExportData): {
     }
   }
 
-  // Validate playlists
-  if (data.data.playlists) {
-    if (!Array.isArray(data.data.playlists)) {
-      errors.push('Playlists data is not an array')
+  // Validate curations
+  if (data.data.curations) {
+    if (!Array.isArray(data.data.curations)) {
+      errors.push('Curations data is not an array')
     } else {
-      sanitized.playlists = data.data.playlists
-        .filter((playlist) => {
-          if (!isValidPlaylist(playlist)) {
-            errors.push(`Invalid playlist: ${JSON.stringify(playlist).slice(0, 50)}`)
+      sanitized.curations = data.data.curations
+        .filter((collection) => {
+          if (!isValidCuratedCollection(collection)) {
+            errors.push(`Invalid curated collection: ${JSON.stringify(collection).slice(0, 50)}`)
             return false
           }
           return true
         })
-        .map((playlist) => ({
-          ...playlist,
-          stations: playlist.stations.filter(isValidStation)
+        .map((collection) => ({
+          ...collection,
+          stations: collection.stations.filter(isValidStation)
         }))
     }
   }
@@ -226,7 +226,7 @@ export function validateImportData(data: ExportData): {
  * Generates a shareable URL for a station using the station UUID
  */
 export function generateStationShareUrl(station: Station): string {
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const baseUrl = 'https://sway.dablulite.dev'
 
   // Use the station UUID (id) for a clean, simple URL
   if (station.id) {

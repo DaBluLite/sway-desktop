@@ -1,62 +1,73 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Icon } from '@mdi/react'
-import { mdiHeart, mdiHeartOutline, mdiShareVariant, mdiRadio } from '@mdi/js'
+import { mdiHeart, mdiHeartOutline } from '@mdi/js'
 import { useFavourites } from '../contexts/favourites-context'
 import { useModal } from '../contexts/modal-context'
 import { Station } from 'radio-browser-api'
 import getTags from '../utils/get-tags'
-import { Play, Radio } from 'lucide-react'
+import { Heart, ListCheck, Play, Radio, Share2 } from 'lucide-react'
+import { useAudioPlayer } from '../contexts/audio-player-context'
+import { useContextMenu } from '../contexts/context-menu-context'
 
 interface StationCardProps {
   station: Station
-  onPlay: (station: Station) => void
 }
 
-export const StationCard: React.FC<StationCardProps> = ({ station, onPlay }) => {
+export const StationCard: React.FC<StationCardProps> = ({ station }: StationCardProps) => {
   const { isFavourite, toggleFavourite } = useFavourites()
-  const { openShareModal, openSimilarStationsModal } = useModal()
+  const { openShareModal, openSimilarStationsModal, openCurationModal } = useModal()
+  const { play } = useAudioPlayer()
+  const { openContextMenu } = useContextMenu()
   const [iconHasError, setIconHasError] = useState(false)
-  const [contextMenu, setContextMenu] = useState<{
-    x: number
-    y: number
-  } | null>(null)
 
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
     e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY })
+    openContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          text: isFavourite(station.url) ? 'Remove from favourites' : 'Add to favourites',
+          onClick: () => toggleFavourite(station),
+          Icon() {
+            return (
+              <Heart
+                className={`size-4 ${isFavourite(station.url) ? 'text-red-500 fill-red-500' : ''}`}
+              />
+            )
+          }
+        },
+        {
+          text: 'Find similar Stations',
+          onClick: () => openSimilarStationsModal(station),
+          Icon() {
+            return <Radio className="size-4" />
+          }
+        },
+        {
+          text: 'Add to Curation',
+          onClick: () => openCurationModal(station),
+          Icon() {
+            return <ListCheck className="size-4" />
+          }
+        },
+        {
+          text: 'Share Station',
+          onClick: () => openShareModal(station),
+          Icon() {
+            return <Share2 className="size-4" />
+          }
+        }
+      ],
+      onClose: () => {}
+    })
   }
-
-  const handleCloseContextMenu = (): void => {
-    setContextMenu(null)
-  }
-
-  const handleToggleFavourite = (): void => {
-    toggleFavourite(station)
-    handleCloseContextMenu()
-  }
-
-  const handleShare = (): void => {
-    openShareModal(station)
-    handleCloseContextMenu()
-  }
-
-  const handleFindSimilar = (): void => {
-    openSimilarStationsModal(station)
-    handleCloseContextMenu()
-  }
-
-  React.useEffect(() => {
-    if (!contextMenu) return
-
-    document.addEventListener('click', handleCloseContextMenu)
-    return () => document.removeEventListener('click', handleCloseContextMenu)
-  }, [contextMenu])
 
   return (
     <>
       <div
         className="station-card"
-        onClick={() => onPlay(station)}
+        onClick={() => play(station)}
         role="button"
         onContextMenu={handleContextMenu}
       >
@@ -116,36 +127,6 @@ export const StationCard: React.FC<StationCardProps> = ({ station, onPlay }) => 
           </div>
         </div>
       </div>
-
-      {contextMenu && (
-        <div
-          className="context-menu"
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            zIndex: 1000
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button className="context-menu-item" onClick={handleToggleFavourite}>
-            <Icon
-              path={isFavourite(station.url) ? mdiHeart : mdiHeartOutline}
-              size={0.7}
-              color={isFavourite(station.url) ? 'red' : 'currentColor'}
-            />
-            <span>{isFavourite(station.url) ? 'Remove from favourites' : 'Add to favourites'}</span>
-          </button>
-          <button className="context-menu-item" onClick={handleFindSimilar}>
-            <Icon path={mdiRadio} size={0.7} color="currentColor" />
-            <span>Find similar stations</span>
-          </button>
-          <button className="context-menu-item" onClick={handleShare}>
-            <Icon path={mdiShareVariant} size={0.7} color="currentColor" />
-            <span>Share station</span>
-          </button>
-        </div>
-      )}
     </>
   )
 }

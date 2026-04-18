@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Icon } from '@mdi/react'
-import { mdiClose, mdiPlaylistPlus, mdiPlaylistMusic, mdiCheck, mdiPlus } from '@mdi/js'
+import { mdiPlaylistPlus, mdiPlaylistMusic, mdiPlus } from '@mdi/js'
 import { usePlaylists } from '../contexts/playlists-context'
 import { SubsonicPlaylist, SubsonicSong } from '../../../../types/subsonic'
+import { Check, X } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 
 interface AddToPlaylistModalProps {
   song: SubsonicSong
@@ -17,6 +19,19 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
 
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
+  const [songArt, setSongArt] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchCover() {
+      try {
+        const url = await window.api.subsonic.getCoverArtUrl(song.id)
+        setSongArt(url)
+      } catch {
+        setSongArt(null)
+      }
+    }
+    fetchCover()
+  }, [song.id])
 
   const handleCreatePlaylist = () => {
     if (!newPlaylistName.trim()) return
@@ -41,7 +56,7 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
             className="p-2 invis-btn rounded-md transition"
             aria-label="Close"
           >
-            <Icon path={mdiClose} size={1} className="text-white" />
+            <X className="text-white size-4" />
           </button>
         </div>
 
@@ -50,11 +65,33 @@ export const AddToPlaylistModal: React.FC<AddToPlaylistModalProps> = ({
           <div className="flex items-center gap-3 p-2 raised-interface-lg rounded-md mb-4">
             <div className="w-12 h-12 rounded-sm raised-interface flex items-center justify-center">
               <Icon path={mdiPlaylistMusic} size={1} className="text-white" />
+              <img
+                src={songArt || undefined}
+                alt={song.title}
+                className="w-full h-full object-cover rounded-sm"
+              />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-white font-medium truncate">{song.title}</h3>
               <p className="text-zinc-400 text-sm truncate">
-                {song.artists.map(({ name }) => name).join(', ')}
+                {song.artists
+                  .map((artist) => (
+                    <Link
+                      key={artist.id}
+                      to={`/artist/$artistId`}
+                      params={{ artistId: artist.id }}
+                      className="hover:underline"
+                    >
+                      {artist.name}
+                    </Link>
+                  ))
+                  .reduce((prev, curr) => (
+                    <>
+                      {prev}
+                      <span className="mr-1">, </span>
+                      {curr}
+                    </>
+                  ))}
               </p>
             </div>
           </div>
@@ -142,7 +179,7 @@ function Toggle({ song, playlist }: { song: SubsonicSong; playlist: SubsonicPlay
       setIsInPlaylist(isIn)
     }
     check()
-  }, [])
+  }, [isSongInPlaylist, playlist.id, song.id])
   return (
     <button
       key={playlist.id}
@@ -154,8 +191,8 @@ function Toggle({ song, playlist }: { song: SubsonicSong; playlist: SubsonicPlay
       <div className="flex-1 min-w-0 text-left">
         <h4 className="text-white font-medium truncate">{playlist.name}</h4>
         <p className="text-zinc-400 text-sm">
-          {(playlist.entry || []).length} song
-          {(playlist.entry || []).length !== 1 ? 's' : ''}
+          {playlist.songCount} song
+          {playlist.songCount !== 1 ? 's' : ''}
         </p>
       </div>
       <div
@@ -163,7 +200,7 @@ function Toggle({ song, playlist }: { song: SubsonicSong; playlist: SubsonicPlay
           isInPlaylist ? 'raised-interface text-white' : 'text-zinc-400 border-faint'
         }`}
       >
-        {isInPlaylist && <Icon path={mdiCheck} size={0.7} />}
+        {isInPlaylist && <Check className="use-theme-text size-4" />}
       </div>
     </button>
   )

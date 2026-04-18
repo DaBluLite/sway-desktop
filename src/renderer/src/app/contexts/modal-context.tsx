@@ -102,6 +102,46 @@ export const ModalProvider: React.FC<ModalProviderProps> = ({ children }: ModalP
     [openModal]
   )
 
+  const openCurationModal = useCallback(
+    (station: Station): string => {
+      return openModal({
+        type: 'add-to-curation',
+        props: { station }
+      })
+    },
+    [openModal]
+  )
+
+  const openCreateCurationModal = useCallback(
+    (onCreated?: (id: string) => void): string => {
+      return openModal({
+        type: 'create-curation',
+        props: { onCreated }
+      })
+    },
+    [openModal]
+  )
+
+  const openEditCurationModal = useCallback(
+    (collectionId: string): string => {
+      return openModal({
+        type: 'edit-curation',
+        props: { collectionId }
+      })
+    },
+    [openModal]
+  )
+
+  const openDeleteCurationModal = useCallback(
+    (collectionId: string): string => {
+      return openModal({
+        type: 'delete-curation',
+        props: { collectionId }
+      })
+    },
+    [openModal]
+  )
+
   const openSimilarStationsModal = useCallback(
     (station: Station): string => {
       return openModal({
@@ -142,6 +182,32 @@ export const ModalProvider: React.FC<ModalProviderProps> = ({ children }: ModalP
     })
   }, [openModal])
 
+  const openEditPlaylistModal = useCallback(
+    (playlistId: string): string => {
+      return openModal({
+        type: 'edit-playlist',
+        props: { playlistId }
+      })
+    },
+    [openModal]
+  )
+
+  const openDeletePlaylistModal = useCallback(
+    (playlistId: string): string => {
+      return openModal({
+        type: 'delete-playlist',
+        props: { playlistId }
+      })
+    },
+    [openModal]
+  )
+
+  const openCreatePlaylistModal = useCallback((): string => {
+    return openModal({
+      type: 'create-playlist'
+    })
+  }, [openModal])
+
   const contextValue: ModalContextValue = {
     modals,
     openModal,
@@ -151,12 +217,19 @@ export const ModalProvider: React.FC<ModalProviderProps> = ({ children }: ModalP
     getModalById,
     openShareModal,
     openPlaylistModal,
+    openCurationModal,
+    openCreateCurationModal,
     openSimilarStationsModal,
     openKeyboardShortcutsModal,
     openSleepTimerModal,
     openAlarmModal,
     openRecorderModal,
-    openImportExportModal
+    openImportExportModal,
+    openEditCurationModal,
+    openDeleteCurationModal,
+    openEditPlaylistModal,
+    openDeletePlaylistModal,
+    openCreatePlaylistModal
   }
 
   return <ModalContext.Provider value={contextValue}>{children}</ModalContext.Provider>

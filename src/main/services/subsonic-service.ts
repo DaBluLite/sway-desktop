@@ -254,16 +254,68 @@ export class SubsonicService implements ISubsonicService {
       s: passwordSalt,
       c: this.config.clientName,
       v: this.config.apiVersion,
-      id: songId
+      id: songId,
+      format: 'raw'
     })
 
     return `${serverUrl}/rest/stream?${params.toString()}`
   }
 
+  async scrobble(songId: string, submission: boolean): Promise<SubsonicCommandResult> {
+    try {
+      if (!this.credentials) {
+        throw new SubsonicError('Subsonic credentials not configured', 'NO_CREDENTIALS')
+      }
+
+      if (!songId || songId.trim() === '') {
+        throw new SubsonicError('Invalid song ID provided', 'INVALID_SONG_ID')
+      }
+
+      const { serverUrl, username, hashedPassword, passwordSalt } = this.credentials
+
+      const params = new URLSearchParams({
+        u: username,
+        t: hashedPassword,
+        s: passwordSalt,
+        c: this.config.clientName,
+        v: this.config.apiVersion,
+        id: songId,
+        f: 'json',
+        submission: String(submission)
+      })
+
+      const apiUrl = `${serverUrl}/rest/scrobble?${params.toString()}`
+
+      // Fetch song metadata
+      const response = await fetch(apiUrl)
+      const res = await response.json()
+      const subsonicResponse = res['subsonic-response']
+
+      if (subsonicResponse.status !== 'ok') {
+        throw new SubsonicError('Failed to scrobble song', 'API_ERROR')
+      }
+
+      return {
+        success: true
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to scrobble song'
+      const subsonicError =
+        error instanceof SubsonicError ? error : new SubsonicError(errorMessage, 'API_ERROR')
+
+      console.error('Subsonic scrobble error:', subsonicError)
+
+      return {
+        success: false,
+        error: subsonicError.message
+      }
+    }
+  }
+
   /**
    * Returns a cover art image URL.
    */
-  async getCoverArtUrl(id: string): Promise<string | null> {
+  getCoverArtUrl(id: string): string | null {
     if (!this.credentials) {
       return null
     }
@@ -345,7 +397,7 @@ export class SubsonicService implements ISubsonicService {
   }
 
   async getRandomAlbums(
-    options: { size: string } = { size: '10' }
+    options: { size: string; offset: string } = { size: '10', offset: '0' }
   ): Promise<SubsonicCommandResult> {
     try {
       if (!this.credentials) {
@@ -387,6 +439,116 @@ export class SubsonicService implements ISubsonicService {
         error instanceof SubsonicError ? error : new SubsonicError(errorMessage, 'API_ERROR')
 
       console.error('Subsonic getRandomAlbums error:', subsonicError)
+
+      return {
+        success: false,
+        error: subsonicError.message
+      }
+    }
+  }
+
+  async getNewlyAddedAlbums(
+    options: { size: string; offset: string } = { size: '10', offset: '0' }
+  ): Promise<SubsonicCommandResult> {
+    try {
+      if (!this.credentials) {
+        throw new SubsonicError('Subsonic credentials not configured', 'NO_CREDENTIALS')
+      }
+
+      const { serverUrl, username, hashedPassword, passwordSalt } = this.credentials
+
+      const params = new URLSearchParams({
+        u: username,
+        t: hashedPassword,
+        s: passwordSalt,
+        c: this.config.clientName,
+        v: this.config.apiVersion,
+        type: 'newest',
+        f: 'json',
+        ...options
+      })
+
+      const apiUrl = `${serverUrl}/rest/getAlbumList2?${params.toString()}`
+
+      const response = await fetch(apiUrl)
+      const res = await response.json()
+      const subsonicResponse = res['subsonic-response']
+
+      if (subsonicResponse.status !== 'ok' || !subsonicResponse.albumList2) {
+        throw new SubsonicError('Failed to parse newly added albums', 'API_ERROR')
+      }
+
+      const albumList = subsonicResponse.albumList2.album
+
+      return {
+        success: true,
+        data: albumList
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to fetch newly added albums'
+      const subsonicError =
+        error instanceof SubsonicError ? error : new SubsonicError(errorMessage, 'API_ERROR')
+
+      console.error('Subsonic getNewlyAddedAlbums error:', subsonicError)
+
+      return {
+        success: false,
+        error: subsonicError.message
+      }
+    }
+  }
+
+  async getTopSongs(artist: string, count?: string): Promise<SubsonicCommandResult> {
+    try {
+      if (!this.credentials) {
+        throw new SubsonicError('Subsonic credentials not configured', 'NO_CREDENTIALS')
+      }
+
+      if (!artist || artist.trim() === '') {
+        throw new SubsonicError('Invalid artist name provided', 'INVALID_ARTIST')
+      }
+
+      const { serverUrl, username, hashedPassword, passwordSalt } = this.credentials
+
+      const params = new URLSearchParams({
+        u: username,
+        t: hashedPassword,
+        s: passwordSalt,
+        c: this.config.clientName,
+        v: this.config.apiVersion,
+        type: 'newest',
+        f: 'json',
+        artist,
+        count: count || '50'
+      })
+
+      const apiUrl = `${serverUrl}/rest/getTopSongs?${params.toString()}`
+
+      const response = await fetch(apiUrl)
+      const res = await response.json()
+      const subsonicResponse = res['subsonic-response']
+
+      if (
+        subsonicResponse.status !== 'ok' ||
+        !subsonicResponse.topSongs ||
+        !subsonicResponse.topSongs.song
+      ) {
+        throw new SubsonicError('Failed to parse top songs', 'API_ERROR')
+      }
+
+      const albumList = subsonicResponse.topSongs.song
+
+      return {
+        success: true,
+        data: albumList
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch top songs'
+      const subsonicError =
+        error instanceof SubsonicError ? error : new SubsonicError(errorMessage, 'API_ERROR')
+
+      console.error('Subsonic getTopSongs error:', subsonicError)
 
       return {
         success: false,
@@ -568,6 +730,65 @@ export class SubsonicService implements ISubsonicService {
     }
   }
 
+  async reportPlayback(
+    songId: string,
+    position: number,
+    state: 'starting' | 'playing' | 'paused' | 'stopped'
+  ): Promise<SubsonicCommandResult> {
+    try {
+      if (!this.credentials) {
+        throw new SubsonicError('Subsonic credentials not configured', 'NO_CREDENTIALS')
+      }
+
+      if (!songId || songId.trim() === '') {
+        throw new SubsonicError('Invalid song ID provided', 'INVALID_SONG_ID')
+      }
+
+      const { serverUrl, username, hashedPassword, passwordSalt } = this.credentials
+
+      const params = new URLSearchParams({
+        u: username,
+        t: hashedPassword,
+        s: passwordSalt,
+        c: this.config.clientName,
+        v: this.config.apiVersion,
+        mediaId: songId,
+        mediaType: 'song',
+        position: position.toString(),
+        ignoreScrobble: 'false',
+        state,
+        f: 'json'
+      })
+
+      const apiUrl = `${serverUrl}/rest/reportPlayback?${params.toString()}`
+
+      // Report playback position
+      const response = await fetch(apiUrl)
+      const res = await response.json()
+      const subsonicResponse = res['subsonic-response']
+
+      if (subsonicResponse.status !== 'ok') {
+        throw new SubsonicError('Failed to report playback position', 'API_ERROR')
+      }
+
+      return {
+        success: true
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Failed to report playback position'
+      const subsonicError =
+        error instanceof SubsonicError ? error : new SubsonicError(errorMessage, 'API_ERROR')
+
+      console.error('Subsonic reportPlayback error:', subsonicError)
+
+      return {
+        success: false,
+        error: subsonicError.message
+      }
+    }
+  }
+
   async getArtist(artistId: string): Promise<SubsonicCommandResult> {
     try {
       if (!this.credentials) {
@@ -633,7 +854,7 @@ export class SubsonicService implements ISubsonicService {
 
       const { serverUrl, username, hashedPassword, passwordSalt } = this.credentials
 
-      // Build the getArtist endpoint URL
+      // Build the getPlaylists endpoint URL
       const params = new URLSearchParams({
         u: username,
         t: hashedPassword,
@@ -651,7 +872,7 @@ export class SubsonicService implements ISubsonicService {
       const subsonicResponse = res['subsonic-response']
 
       if (subsonicResponse.status !== 'ok' || !subsonicResponse.playlists) {
-        throw new SubsonicError('Failed to parse artist metadata', 'API_ERROR')
+        throw new SubsonicError('Failed to parse playlist metadata', 'API_ERROR')
       }
 
       return {

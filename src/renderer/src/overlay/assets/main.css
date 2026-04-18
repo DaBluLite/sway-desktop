@@ -1741,3 +1741,22 @@ ul {
   -webkit-app-region: drag;
   @apply h-3 top-0 left-0 right-0 absolute;
 }
+
+/* Song Thumbnail Grid */
+.thumbnail-grid {
+  @apply grid grid-cols-2 gap-2 w-48 h-48 rounded-lg overflow-hidden;
+  @apply raised-interface-lg;
+}
+
+.thumbnail-grid-item {
+  @apply w-full h-full rounded overflow-hidden;
+  @apply bg-white dark:bg-zinc-900 flex items-center justify-center;
+}
+
+.thumbnail-grid-image {
+  @apply w-full h-full object-cover;
+}
+
+.thumbnail-grid-fallback {
+  @apply w-full h-full flex items-center justify-center bg-second-layer-thin dark:bg-second-layer-thin-dark;
+}

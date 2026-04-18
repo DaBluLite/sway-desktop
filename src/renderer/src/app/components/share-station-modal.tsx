@@ -40,14 +40,6 @@ export const ShareStationModal: React.FC<ShareStationModalProps> = ({
     }
   }
 
-  const handleCopyStationUrl = async () => {
-    const success = await copyToClipboard(station.urlResolved || station.url)
-    if (success) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
   const shareText = `Listen to ${station.name} on Sway Radio!`
 
   const socialLinks = [
@@ -173,27 +165,6 @@ export const ShareStationModal: React.FC<ShareStationModalProps> = ({
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-sm text-zinc-400 mb-2 block">Direct Stream URL</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={station.urlResolved || station.url}
-                    readOnly
-                    className="flex-1 px-3 py-2 raised-interface rounded-md text-white text-sm focus:outline-none"
-                  />
-                  <button
-                    onClick={handleCopyStationUrl}
-                    className="px-4 py-2 btn text-white rounded-md use-transition flex items-center gap-2"
-                  >
-                    <Icon path={mdiContentCopy} size={0.8} />
-                  </button>
-                </div>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Use this URL to play in external media players
-                </p>
               </div>
             </div>
           )}

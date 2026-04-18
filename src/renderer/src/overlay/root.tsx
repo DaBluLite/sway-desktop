@@ -1,11 +1,11 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
 
 const RootComponent = () => (
-  <div className="flex flex-col gap-2 top-2 bottom-2 right-2 w-90">
+  <div className="flex flex-col absolute h-[calc(100%-4.25rem)] gap-2 top-4 bottom-4 right-4 w-90 bg-[#e7f7ee] dark:bg-black rounded-lg shadow-lg p-2">
     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
       <Link
         to="/"
-        className="p-4 border-2 border-white dark:border-zinc-950 rounded-md [&.active]:border-green-400 use-transition bg-white dark:bg-zinc-950"
+        className="p-4 invis-btn rounded-md [&.active]:border-subtle [&.active]:shadow-main [&.active]:bg-second-layer-thin-active dark:[&.active]:bg-second-layer-thin-active-dark use-transition"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -22,7 +22,7 @@ const RootComponent = () => (
       </Link>
       <Link
         to="/library"
-        className="p-4 border-2 border-white dark:border-zinc-950 rounded-md [&.active]:border-green-400 use-transition bg-white dark:bg-zinc-950"
+        className="p-4 invis-btn rounded-md [&.active]:border-subtle [&.active]:shadow-main [&.active]:bg-second-layer-thin-active dark:[&.active]:bg-second-layer-thin-active-dark use-transition"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -35,7 +35,7 @@ const RootComponent = () => (
       </Link>
     </div>
     <div
-      className="rounded-lg bg-white dark:bg-zinc-950 w-full h-fit min-h-20 flex p-2 justify-start items-start"
+      className="w-full h-fit min-h-20 flex p-2 justify-start items-start"
       onClick={(e) => e.stopPropagation()}
     >
       <Outlet /> {/* routes render here */}

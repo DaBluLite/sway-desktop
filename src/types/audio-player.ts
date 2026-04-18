@@ -1,11 +1,16 @@
 import { Station } from 'radio-browser-api'
 import { SubsonicSong } from './subsonic'
 
+export type RepeatMode = 'off' | 'all' | 'one'
+
 // Main Process Audio Player State
 export interface AudioPlayerState {
   isPlaying: boolean
   currentStation: Station | null
   currentSong: SubsonicSong | null
+  queue: SubsonicSong[]
+  queueIndex: number
+  repeat: RepeatMode
   volume: number
   isMuted: boolean
   isLoading: boolean
@@ -24,6 +29,12 @@ export interface AudioPlayerState {
 export interface AudioDevice {
   name: string
   description: string
+  // True if this device supports exclusive/bit-perfect audio modes
+  // On Linux: ALSA hw:/plughw: devices (direct hardware access)
+  // On macOS: CoreAudio devices
+  // On Windows: WASAPI devices
+  // False for PipeWire/PulseAudio (they apply DSP at daemon level)
+  supports_exclusive_audio: boolean
 }
 
 // IPC Command Types
@@ -103,19 +114,25 @@ export const AudioPlayerChannels = {
   // Commands (bidirectional - renderer -> main -> response)
   PLAY_STATION: 'audio-player:play-station',
   PLAY_SONG: 'audio-player:play-song',
+  PLAY_SONGS: 'audio-player:play-songs',
   PAUSE: 'audio-player:pause',
   RESUME: 'audio-player:resume',
   STOP: 'audio-player:stop',
+  NEXT: 'audio-player:next',
+  PREVIOUS: 'audio-player:previous',
+  ADD_TO_QUEUE: 'audio-player:add-to-queue',
   SET_VOLUME: 'audio-player:set-volume',
   TOGGLE_MUTE: 'audio-player:toggle-mute',
   SEEK: 'audio-player:seek',
   GET_STATE: 'audio-player:get-state',
   UPDATE_SETTINGS: 'audio-player:update-settings',
   GET_DEVICES: 'audio-player:get-devices',
+  REFRESH_DEVICES: 'audio-player:refresh-devices',
 
   // Events (one-way - main -> renderer)
   STATE_CHANGED: 'audio-player:state-changed',
   RETRY_PLAYBACK: 'audio-player:retry-playback',
+  DEVICES_CHANGED: 'audio-player:devices-changed',
 
   // Renderer Events (one-way - renderer -> main)
   RENDERER_EVENT: 'audio-player:renderer-event'
@@ -132,14 +149,19 @@ export interface IAudioPlayerService {
   // Playback controls
   playStation(station: Station): Promise<AudioPlayerCommandResult>
   playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult>
+  playSongs(songs: SubsonicSong[], index: number): Promise<AudioPlayerCommandResult>
   pause(): Promise<AudioPlayerCommandResult>
   resume(): Promise<AudioPlayerCommandResult>
   stop(): Promise<AudioPlayerCommandResult>
+  next(): Promise<AudioPlayerCommandResult>
+  previous(): Promise<AudioPlayerCommandResult>
+  addToQueue(songs: SubsonicSong[], position: 'next' | 'last'): Promise<AudioPlayerCommandResult>
   setVolume(volume: number): Promise<AudioPlayerCommandResult>
   toggleMute(): Promise<AudioPlayerCommandResult>
   seek(position: number): Promise<AudioPlayerCommandResult>
   updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult>
   getAudioDevices(): Promise<AudioDevice[]>
+  broadcastDeviceList(): Promise<void>
 
   // Window management
   registerWindow(windowId: number): void
@@ -162,18 +184,24 @@ export interface AudioPlayerAPI {
   // Commands
   playStation(station: Station): Promise<AudioPlayerCommandResult>
   playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult>
+  playSongs(songs: SubsonicSong[], index: number): Promise<AudioPlayerCommandResult>
   pause(): Promise<AudioPlayerCommandResult>
   resume(): Promise<AudioPlayerCommandResult>
   stop(): Promise<AudioPlayerCommandResult>
+  next(): Promise<AudioPlayerCommandResult>
+  previous(): Promise<AudioPlayerCommandResult>
+  addToQueue(songs: SubsonicSong[], position: 'next' | 'last'): Promise<AudioPlayerCommandResult>
   setVolume(volume: number): Promise<AudioPlayerCommandResult>
   toggleMute(): Promise<AudioPlayerCommandResult>
   seek(position: number): Promise<AudioPlayerCommandResult>
   updateSettings(settings: Partial<AudioPlayerState>): Promise<AudioPlayerCommandResult>
   getAudioDevices(): Promise<AudioDevice[]>
+  refreshDevices(): Promise<void>
   getState(): Promise<AudioPlayerState>
 
   // Event listeners
   onStateChanged(callback: (event: AudioPlayerStateChanged) => void): () => void
+  onDevicesChanged(callback: (devices: AudioDevice[]) => void): () => void
 
   // Renderer event reporting (mainly for UI feedback now)
   reportRendererEvent(event: RendererAudioEvent): void
@@ -215,6 +243,9 @@ export const DEFAULT_AUDIO_STATE: AudioPlayerState = {
   isPlaying: false,
   currentStation: null,
   currentSong: null,
+  queue: [],
+  queueIndex: -1,
+  repeat: 'off',
   volume: 0.7,
   isMuted: false,
   isLoading: false,

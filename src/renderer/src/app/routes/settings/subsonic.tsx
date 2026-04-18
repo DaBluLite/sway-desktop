@@ -1,16 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { mdiDatabaseOutline, mdiMusicBoxMultiple } from '@mdi/js'
-import { Icon } from '@mdi/react'
 import { useState, useEffect } from 'react'
 import { useSubsonic } from '../../contexts/subsonic-context'
 import { Save } from 'lucide-react'
-
-interface SubsonicAlbum {
-  id: string
-  title: string
-  artist: string
-  coverArt?: string
-}
 
 export const Route = createFileRoute('/settings/subsonic')({
   component: SubsonicSettings
@@ -24,7 +15,6 @@ function SubsonicSettings() {
   const [configured, setConfigured] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
-  const [albums, setAlbums] = useState<SubsonicAlbum[]>([])
 
   useEffect(() => {
     // Check initial status
@@ -73,27 +63,7 @@ function SubsonicSettings() {
       setUsername('')
       setPassword('')
       setStatusMsg('Credentials cleared')
-      setAlbums([])
       setTimeout(() => setStatusMsg(null), 3000)
-    }
-  }
-
-  const handleTestMostPlayed = async () => {
-    setError(null)
-    setStatusMsg('Fetching most played albums...')
-    try {
-      const result = await window.api.subsonic.getMostPlayed()
-      if (result.success) {
-        const fetchedAlbums = (result.data as SubsonicAlbum[]) || []
-        setAlbums(fetchedAlbums)
-        setStatusMsg(`Successfully fetched ${fetchedAlbums.length} albums.`)
-      } else {
-        setError(result.error || 'Failed to fetch most played albums')
-        setStatusMsg(null)
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch most played albums')
-      setStatusMsg(null)
     }
   }
 

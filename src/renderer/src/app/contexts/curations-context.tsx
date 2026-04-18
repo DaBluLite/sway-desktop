@@ -27,6 +27,7 @@ interface CurationsContextType {
   removeStationFromCollection: (collectionId: string, stationUrl: string) => void
   reorderCollections: (orderedIds: string[]) => void
   importDefaultCollections: () => void
+  importCurations: (collections: CuratedCollection[]) => void
 }
 
 const CurationsContext = createContext<CurationsContextType | undefined>(undefined)
@@ -34,8 +35,9 @@ const CurationsContext = createContext<CurationsContextType | undefined>(undefin
 const CURATIONS_KEY = 'curations'
 
 // Default curated collections
-const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updatedAt'>[] = [
+const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'createdAt' | 'updatedAt'>[] = [
   {
+    id: 'chill-vibes',
     name: 'Chill Vibes',
     description: 'Relaxing stations for unwinding and meditation',
     icon: '🌊',
@@ -45,6 +47,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 0
   },
   {
+    id: 'morning-energy',
     name: 'Morning Energy',
     description: 'Upbeat stations to start your day right',
     icon: '☀️',
@@ -54,6 +57,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 1
   },
   {
+    id: 'focus-study',
     name: 'Focus & Study',
     description: 'Concentration-boosting instrumentals and lo-fi beats',
     icon: '📚',
@@ -63,6 +67,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 2
   },
   {
+    id: 'party-mix',
     name: 'Party Mix',
     description: 'High-energy stations for celebrations',
     icon: '🎉',
@@ -72,6 +77,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 3
   },
   {
+    id: 'jazz-classics',
     name: 'Jazz Classics',
     description: 'Timeless jazz from legendary artists',
     icon: '🎷',
@@ -81,6 +87,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 4
   },
   {
+    id: 'world-music',
     name: 'World Music',
     description: 'Discover sounds from around the globe',
     icon: '🌍',
@@ -90,6 +97,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 5
   },
   {
+    id: 'late-night',
     name: 'Late Night',
     description: 'Smooth tunes for after dark',
     icon: '🌙',
@@ -99,6 +107,7 @@ const DEFAULT_COLLECTIONS: Omit<CuratedCollection, 'id' | 'createdAt' | 'updated
     order: 6
   },
   {
+    id: 'workout',
     name: 'Workout',
     description: 'High-BPM tracks to power your exercise',
     icon: '💪',
@@ -159,6 +168,19 @@ export const CurationsProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     []
   )
+
+  const importCurations = useCallback((imported: CuratedCollection[]) => {
+    setCollections((prev) => {
+      const existingIds = new Set(prev.map((c) => c.id))
+      const merged = [
+        ...prev,
+        ...imported
+          .filter((c) => !existingIds.has(c.id))
+          .map((c) => ({ ...c, createdAt: Date.now(), updatedAt: Date.now() }))
+      ]
+      return merged.sort((a, b) => a.order - b.order)
+    })
+  }, [])
 
   const updateCollection = useCallback((id: string, updates: Partial<CuratedCollection>) => {
     setCollections((prev) =>
@@ -233,7 +255,6 @@ export const CurationsProvider: React.FC<{ children: React.ReactNode }> = ({
     const now = Date.now()
     const defaultWithIds: CuratedCollection[] = DEFAULT_COLLECTIONS.map((collection, index) => ({
       ...collection,
-      id: crypto.randomUUID(),
       order: index,
       createdAt: now,
       updatedAt: now
@@ -261,7 +282,8 @@ export const CurationsProvider: React.FC<{ children: React.ReactNode }> = ({
         addStationToCollection,
         removeStationFromCollection,
         reorderCollections,
-        importDefaultCollections
+        importDefaultCollections,
+        importCurations
       }}
     >
       {children}

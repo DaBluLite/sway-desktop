@@ -1,5 +1,4 @@
 import { ipcRenderer, contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import { Station } from 'radio-browser-api'
 import { SubsonicCommandResult, SubsonicChannels, SubsonicSong } from '../types/subsonic'
 import {
@@ -7,7 +6,8 @@ import {
   AudioPlayerState,
   AudioPlayerStateChanged,
   AudioPlayerChannels,
-  RendererAudioEvent
+  RendererAudioEvent,
+  AudioDevice
 } from '../types/audio-player'
 
 // Custom APIs for renderer
@@ -47,6 +47,9 @@ const api = {
     async playSong(song: SubsonicSong, streamUrl: string): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.PLAY_SONG, song, streamUrl)
     },
+    async playSongs(songs: SubsonicSong[], index: number): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.PLAY_SONGS, songs, index)
+    },
     async pause(): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.PAUSE)
     },
@@ -55,6 +58,18 @@ const api = {
     },
     async stop(): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.STOP)
+    },
+    async next(): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.NEXT)
+    },
+    async previous(): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.PREVIOUS)
+    },
+    async addToQueue(
+      songs: SubsonicSong[],
+      position: 'next' | 'last'
+    ): Promise<AudioPlayerCommandResult> {
+      return ipcRenderer.invoke(AudioPlayerChannels.ADD_TO_QUEUE, songs, position)
     },
     async setVolume(volume: number): Promise<AudioPlayerCommandResult> {
       return ipcRenderer.invoke(AudioPlayerChannels.SET_VOLUME, volume)
@@ -71,6 +86,9 @@ const api = {
     async getAudioDevices(): Promise<AudioDevice[]> {
       return ipcRenderer.invoke(AudioPlayerChannels.GET_DEVICES)
     },
+    async refreshDevices(): Promise<void> {
+      ipcRenderer.send(AudioPlayerChannels.REFRESH_DEVICES)
+    },
     async getState(): Promise<AudioPlayerState> {
       return ipcRenderer.invoke(AudioPlayerChannels.GET_STATE)
     },
@@ -81,6 +99,15 @@ const api = {
       ipcRenderer.on(AudioPlayerChannels.STATE_CHANGED, listener)
       return () => {
         ipcRenderer.removeListener(AudioPlayerChannels.STATE_CHANGED, listener)
+      }
+    },
+    onDevicesChanged(callback: (devices: AudioDevice[]) => void): () => void {
+      const listener = (_event: Electron.IpcRendererEvent, devices: AudioDevice[]) => {
+        callback(devices)
+      }
+      ipcRenderer.on(AudioPlayerChannels.DEVICES_CHANGED, listener)
+      return () => {
+        ipcRenderer.removeListener(AudioPlayerChannels.DEVICES_CHANGED, listener)
       }
     },
     onRetryPlayback(callback: (station: Station) => void): () => void {
@@ -153,6 +180,10 @@ const api = {
       return ipcRenderer.invoke(SubsonicChannels.DELETE_PLAYLIST, playlistId)
     },
 
+    async scrobble(songId: string, submission: boolean): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.SCROBBLE, songId, submission)
+    },
+
     async updatePlaylist(
       playlistId: string,
       name?: string,
@@ -166,6 +197,14 @@ const api = {
       songIds: string[]
     ): Promise<SubsonicCommandResult> {
       return ipcRenderer.invoke(SubsonicChannels.REPLACE_PLAYLIST_SONGS, playlistId, songIds)
+    },
+
+    async reportPlayback(
+      songId: string,
+      position: number,
+      state: 'starting' | 'playing' | 'paused' | 'stopped'
+    ): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.REPORT_PLAYBACK, songId, position, state)
     },
 
     async getCoverArtUrl(id: string): Promise<string | null> {
@@ -183,7 +222,21 @@ const api = {
       return ipcRenderer.invoke(SubsonicChannels.GET_MOST_PLAYED, options)
     },
 
-    async getRandomAlbums(options?: { size: string }): Promise<SubsonicCommandResult> {
+    async getNewlyAddedAlbums(options: {
+      size: string
+      offset: string
+    }): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_NEWLY_ADDED_ALBUMS, options)
+    },
+
+    async getTopSongs(artist: string, count?: string): Promise<SubsonicCommandResult> {
+      return ipcRenderer.invoke(SubsonicChannels.GET_TOP_SONGS, { artist, count })
+    },
+
+    async getRandomAlbums(options?: {
+      size: string
+      offset: string
+    }): Promise<SubsonicCommandResult> {
       return ipcRenderer.invoke(SubsonicChannels.GET_RANDOM_ALBUMS, options)
     },
 
@@ -240,14 +293,11 @@ const api = {
 // just add to the DOM global.
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

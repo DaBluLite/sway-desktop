@@ -5,9 +5,16 @@ import { KeyboardShortcutsModal } from './keyboard-shortcuts-modal'
 import { SleepTimerModal } from './sleep-timer-modal'
 import { ShareStationModal } from './share-station-modal'
 import { AddToPlaylistModal } from './add-to-playlist-modal'
+import { AddToCurationModal } from './add-to-curation-modal'
+import { CreateCurationModal } from './create-curation-modal'
 import { SimilarStationsModal } from './similar-stations-modal'
 import { AlarmModal } from './alarm-modal'
 import { ImportExportModal } from './import-export-modal'
+import { DeleteCurationModal } from './delete-curation-modal'
+import { EditCurationModal } from './edit-curation-modal'
+import { EditPlaylistModal } from './edit-playlist-modal'
+import { DeletePlaylistModal } from './delete-playlist-modal'
+import { CreatePlaylistModal } from './create-playlist-modal'
 
 const ModalWrapper: React.FC = () => {
   const { modals, closeModal } = useModal()
@@ -35,6 +42,59 @@ const ModalWrapper: React.FC = () => {
 
       case 'add-to-playlist':
         return <AddToPlaylistModal key={modal.id} song={modal.props?.song} onClose={handleClose} />
+
+      case 'add-to-curation':
+        return (
+          <AddToCurationModal key={modal.id} station={modal.props?.station} onClose={handleClose} />
+        )
+
+      case 'create-curation':
+        return (
+          <CreateCurationModal
+            key={modal.id}
+            onClose={handleClose}
+            onCreated={modal.props?.onCreated}
+          />
+        )
+
+      case 'edit-curation':
+        return (
+          <EditCurationModal
+            key={modal.id}
+            collectionId={modal.props?.collectionId}
+            onClose={handleClose}
+          />
+        )
+
+      case 'delete-curation':
+        return (
+          <DeleteCurationModal
+            key={modal.id}
+            collectionId={modal.props?.collectionId}
+            onClose={handleClose}
+          />
+        )
+
+      case 'edit-playlist':
+        return (
+          <EditPlaylistModal
+            key={modal.id}
+            playlistId={modal.props?.playlistId}
+            onClose={handleClose}
+          />
+        )
+
+      case 'delete-playlist':
+        return (
+          <DeletePlaylistModal
+            key={modal.id}
+            playlistId={modal.props?.playlistId}
+            onClose={handleClose}
+          />
+        )
+
+      case 'create-playlist':
+        return <CreatePlaylistModal key={modal.id} onClose={handleClose} />
 
       case 'similar-stations':
         return (

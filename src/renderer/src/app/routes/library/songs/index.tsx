@@ -1,4 +1,3 @@
-import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
 import { useLibrary } from '@renderer/contexts/library-context'
 import { createFileRoute } from '@tanstack/react-router'
 import SongRow from '@renderer/components/song-row'
@@ -8,8 +7,7 @@ export const Route = createFileRoute('/library/songs/')({
 })
 
 function RouteComponent() {
-  const { starred, isStarred, star, unstar } = useLibrary()
-  const { playSong, currentSong } = useAudioPlayer()
+  const { starred } = useLibrary()
   const starredSongs = starred?.song || []
   return (
     <div className="flex flex-col px-12 w-full h-screen gap-2">
@@ -36,17 +34,7 @@ function RouteComponent() {
       </div>
       <div className="overflow-y-auto flex flex-col pb-35">
         {starredSongs?.map((song, i) => (
-          <SongRow
-            song={song}
-            i={i}
-            key={song.id}
-            star={star}
-            playlist={starredSongs}
-            unstar={unstar}
-            playSong={playSong}
-            isStarred={isStarred}
-            currentSong={currentSong}
-          />
+          <SongRow song={song} i={i} key={song.id} playlist={starredSongs} />
         ))}
       </div>
     </div>

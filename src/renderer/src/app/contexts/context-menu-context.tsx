@@ -53,9 +53,7 @@ const MenuItem: React.FC<{ item: ContextMenuItem; onClose: () => void }> = ({ it
   return (
     <div
       ref={itemRef}
-      className={`relative flex items-center gap-3 px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-theme-bg/10 ${
-        item.danger ? 'text-red-500 hover:bg-red-500/10' : 'text-theme-text'
-      }`}
+      className={`context-menu-item ${item.danger ? 'danger' : ''}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={handleClick}
@@ -90,7 +88,7 @@ const MenuItem: React.FC<{ item: ContextMenuItem; onClose: () => void }> = ({ it
 
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ x, y })
+  const [pos, setPos] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     if (menuRef.current) {
@@ -134,7 +132,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }) => {
     >
       <div
         ref={menuRef}
-        className="absolute min-w-50 py-1 bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg shadow-2xl z-1001 animate-in fade-in zoom-in duration-100"
+        className={'absolute context-menu' + (pos.x === 0 && pos.y === 0 ? ' invisible' : '')}
         style={{
           left: pos.x,
           top: pos.y,

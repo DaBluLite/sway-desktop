@@ -1,7 +1,7 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../build/icon.png?asset'
 import { SubsonicService } from './services/subsonic-service'
 import { AudioPlayerService } from './services/audio-player-service'
 import { SubsonicChannels } from '../types/subsonic'
@@ -24,7 +24,7 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true
     }
   })
 
@@ -87,62 +87,62 @@ function createWindow(): void {
   }
 }
 
-let secondWindow: BrowserWindow | null = null
+//let secondWindow: BrowserWindow | null = null
 
-function createSecondWindow(): void {
-  const { workArea } = screen.getPrimaryDisplay()
-  secondWindow = new BrowserWindow({
-    x: workArea.x,
-    y: workArea.y,
-    width: workArea.width,
-    height: workArea.height,
-    show: false,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    movable: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+// function createSecondWindow(): void {
+//   const { workArea } = screen.getPrimaryDisplay()
+//   secondWindow = new BrowserWindow({
+//     x: workArea.x,
+//     y: workArea.y,
+//     width: workArea.width,
+//     height: workArea.height,
+//     show: false,
+//     frame: false,
+//     transparent: true,
+//     alwaysOnTop: true,
+//     skipTaskbar: true,
+//     resizable: false,
+//     movable: false,
+//     webPreferences: {
+//       preload: join(__dirname, '../preload/index.js'),
+//       sandbox: false
+//     }
+//   })
 
-  secondWindow.on('ready-to-show', () => {
-    secondWindow?.show()
-    if (subsonicService && secondWindow) {
-      subsonicService.registerWindow(secondWindow.id)
-    }
-    if (audioPlayerService && secondWindow) {
-      audioPlayerService.registerWindow(secondWindow.id)
-    }
-  })
+//   secondWindow.on('ready-to-show', () => {
+//     secondWindow?.show()
+//     if (subsonicService && secondWindow) {
+//       subsonicService.registerWindow(secondWindow.id)
+//     }
+//     if (audioPlayerService && secondWindow) {
+//       audioPlayerService.registerWindow(secondWindow.id)
+//     }
+//   })
 
-  secondWindow.on('closed', () => {
-    if (subsonicService && secondWindow) {
-      subsonicService.unregisterWindow(secondWindow.id)
-    }
-    if (audioPlayerService && secondWindow) {
-      audioPlayerService.unregisterWindow(secondWindow.id)
-    }
-    secondWindow = null
-  })
+//   secondWindow.on('closed', () => {
+//     if (subsonicService && secondWindow) {
+//       subsonicService.unregisterWindow(secondWindow.id)
+//     }
+//     if (audioPlayerService && secondWindow) {
+//       audioPlayerService.unregisterWindow(secondWindow.id)
+//     }
+//     secondWindow = null
+//   })
 
-  // Load the same dev server or a different route
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    secondWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/overlay.html`)
-  } else {
-    secondWindow.loadFile(join(__dirname, '../renderer/overlay.html'))
-  }
-}
+//   // Load the same dev server or a different route
+//   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+//     secondWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/overlay.html`)
+//   } else {
+//     secondWindow.loadFile(join(__dirname, '../renderer/overlay.html'))
+//   }
+// }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   subsonicService = new SubsonicService()
-  audioPlayerService = new AudioPlayerService()
+  audioPlayerService = new AudioPlayerService(subsonicService)
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
@@ -193,32 +193,19 @@ app.whenReady().then(() => {
     }
   })
 
-  const hideOverlayWithAnimation = () => {
-    if (secondWindow && !secondWindow.isDestroyed()) {
-      // Send event to overlay to add hiding class for animation
-      secondWindow.webContents.send('overlay-hiding')
+  // const hideOverlayWithAnimation = () => {
+  //   if (secondWindow && !secondWindow.isDestroyed()) {
+  //     // Send event to overlay to add hiding class for animation
+  //     secondWindow.webContents.send('overlay-hiding')
 
-      // Close window after animation completes
-      setTimeout(() => {
-        if (secondWindow && !secondWindow.isDestroyed()) {
-          secondWindow.close()
-        }
-      }, 500)
-    }
-  }
-
-  ipcMain.on('overlay-hide', () => {
-    hideOverlayWithAnimation()
-  })
-
-  ipcMain.on('overlay-show', () => {
-    if (!secondWindow || secondWindow.isDestroyed()) {
-      createSecondWindow()
-    } else {
-      secondWindow.show()
-      secondWindow.focus()
-    }
-  })
+  //     // Close window after animation completes
+  //     setTimeout(() => {
+  //       if (secondWindow && !secondWindow.isDestroyed()) {
+  //         secondWindow.close()
+  //       }
+  //     }, 500)
+  //   }
+  // }
 
   // Audio Player Service IPC Handlers
   ipcMain.handle(AudioPlayerChannels.PLAY_STATION, async (_event, station) => {
@@ -227,6 +214,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle(AudioPlayerChannels.PLAY_SONG, async (_event, song, streamUrl) => {
     return await audioPlayerService?.playSong(song, streamUrl)
+  })
+
+  ipcMain.handle(AudioPlayerChannels.PLAY_SONGS, async (_event, songs, index) => {
+    return await audioPlayerService?.playSongs(songs, index)
   })
 
   ipcMain.handle(AudioPlayerChannels.PAUSE, async () => {
@@ -239,6 +230,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle(AudioPlayerChannels.STOP, async () => {
     return await audioPlayerService?.stop()
+  })
+
+  ipcMain.handle(AudioPlayerChannels.NEXT, async () => {
+    return await audioPlayerService?.next()
+  })
+
+  ipcMain.handle(AudioPlayerChannels.PREVIOUS, async () => {
+    return await audioPlayerService?.previous()
+  })
+
+  ipcMain.handle(AudioPlayerChannels.ADD_TO_QUEUE, async (_event, songs, position) => {
+    return await audioPlayerService?.addToQueue(songs, position)
   })
 
   ipcMain.handle(AudioPlayerChannels.SET_VOLUME, async (_event, volume) => {
@@ -259,6 +262,10 @@ app.whenReady().then(() => {
 
   ipcMain.handle(AudioPlayerChannels.GET_DEVICES, async () => {
     return (await audioPlayerService?.getAudioDevices()) || []
+  })
+
+  ipcMain.on(AudioPlayerChannels.REFRESH_DEVICES, async () => {
+    await audioPlayerService?.broadcastDeviceList()
   })
 
   ipcMain.handle(AudioPlayerChannels.GET_STATE, async () => {
@@ -325,6 +332,15 @@ app.whenReady().then(() => {
     )
   })
 
+  ipcMain.handle(SubsonicChannels.SCROBBLE, async (_event, songId, submission) => {
+    return (
+      subsonicService?.scrobble(songId, submission) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
   ipcMain.handle(SubsonicChannels.GET_ALBUM, async (_event, albumId) => {
     return (
       subsonicService?.getAlbum(albumId) ?? {
@@ -379,6 +395,15 @@ app.whenReady().then(() => {
     )
   })
 
+  ipcMain.handle(SubsonicChannels.REPORT_PLAYBACK, async (_event, songId, position, state) => {
+    return (
+      subsonicService?.reportPlayback(songId, position, state) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
   ipcMain.handle(SubsonicChannels.UPDATE_PLAYLIST, async (_event, playlistId, name, comment) => {
     return (
       subsonicService?.updatePlaylist(playlistId, name, comment) ?? {
@@ -413,6 +438,24 @@ app.whenReady().then(() => {
   ipcMain.handle(SubsonicChannels.GET_RANDOM_ALBUMS, async (_event, options) => {
     return (
       subsonicService?.getRandomAlbums(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_NEWLY_ADDED_ALBUMS, async (_event, options) => {
+    return (
+      subsonicService?.getNewlyAddedAlbums(options) ?? {
+        success: false,
+        error: 'Subsonic service not initialized'
+      }
+    )
+  })
+
+  ipcMain.handle(SubsonicChannels.GET_TOP_SONGS, async (_event, { artist, count }) => {
+    return (
+      subsonicService?.getTopSongs(artist, count) ?? {
         success: false,
         error: 'Subsonic service not initialized'
       }
@@ -460,14 +503,6 @@ app.whenReady().then(() => {
   })
 
   createWindow()
-
-  globalShortcut.register('CommandOrControl+Shift+M', () => {
-    if (!secondWindow || secondWindow.isDestroyed()) {
-      createSecondWindow()
-    } else {
-      hideOverlayWithAnimation()
-    }
-  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

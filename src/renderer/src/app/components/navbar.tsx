@@ -1,32 +1,44 @@
 import Wordmark from '@renderer/assets/wordmark'
 import { useWindow } from '@renderer/contexts/window-context'
 import { Link, useRouter } from '@tanstack/react-router'
-import { Disc3, EllipsisVertical, House, ListMusic, MicVocal, Music, Radio } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  Cog,
+  Disc3,
+  EllipsisVertical,
+  House,
+  ListCheck,
+  ListMusic,
+  MicVocal,
+  Music,
+  PencilLine,
+  Plus,
+  Radio,
+  SortDesc,
+  Trash
+} from 'lucide-react'
 import { usePlaylists } from '@renderer/contexts/playlists-context'
 import { useSubsonic } from '@renderer/contexts/subsonic-context'
+import { useCurations } from '@renderer/contexts/curations-context'
+import { SubsonicPlaylist } from '../../../../types/subsonic'
+import { useContextMenu } from '@renderer/contexts/context-menu-context'
+import { useState } from 'react'
+import { useModal } from '@renderer/contexts/modal-context'
 
 function Navbar() {
-  const [contextMenu, setContextMenu] = useState<{
-    x: number
-    y: number
-  } | null>(null)
+  const { openContextMenu } = useContextMenu()
   const { subsonicEnabled } = useSubsonic()
   const { playlists } = usePlaylists()
-  const handleContextMenu = (e: React.MouseEvent<HTMLButtonElement>): void => {
-    e.preventDefault()
-    e.stopPropagation()
-    setContextMenu({ x: e.clientX, y: e.clientY })
-  }
-
-  const handleCloseContextMenu = (): void => {
-    setContextMenu(null)
-  }
-
-  useEffect(() => {
-    document.addEventListener('click', handleCloseContextMenu)
-    return () => document.removeEventListener('click', handleCloseContextMenu)
-  }, [contextMenu])
+  const { collections } = useCurations()
+  const {
+    openEditPlaylistModal,
+    openDeletePlaylistModal,
+    openCreateCurationModal,
+    openCreatePlaylistModal,
+    openEditCurationModal,
+    openDeleteCurationModal
+  } = useModal()
+  const [playlistSort, setPlaylistSort] = useState<'name' | 'songCount'>('name')
+  const [curationSort, setCurationSort] = useState<'name' | 'stationCount'>('name')
 
   const handleMinimize = () => {
     window.api.window.minimize()
@@ -43,33 +55,79 @@ function Navbar() {
 
   const router = useRouter()
 
+  function handlePlaylistContextMenu(e: React.MouseEvent, playlist: SubsonicPlaylist) {
+    e.preventDefault()
+    e.stopPropagation()
+    openContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      onClose: () => {
+        // Any cleanup if needed when context menu closes
+      },
+      items: [
+        {
+          text: 'Edit Playlist',
+          onClick: () => {
+            openEditPlaylistModal(playlist.id)
+          }
+        },
+        {
+          text: 'Delete Playlist',
+          onClick: () => {
+            openDeletePlaylistModal(playlist.id)
+          }
+        }
+      ]
+    })
+    // You can also store the playlistId in state if you want to perform actions on it
+  }
+
+  const handleSettingsContextMenu = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    openContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          text: 'Settings',
+          onClick: () => router.navigate({ to: '/settings' }),
+          Icon() {
+            return <Cog className="size-4" />
+          }
+        }
+      ],
+      onClose: () => {}
+    })
+  }
+
   return (
     <>
-      {subsonicEnabled && (
-        <div className="navbar">
-          <div className="flex justify-between items-center gap-2">
-            <Wordmark className="use-theme-text h-6 m-3 w-fit" />
-            <button
-              className="invis-btn rounded-full p-2 cursor-pointer"
-              onClick={handleContextMenu}
-            >
-              <EllipsisVertical className="use-theme-text size-4" />
-            </button>
-          </div>
-          {subsonicEnabled && (
-            <Link to="/" className="nav-item">
-              <House className="size-4" />
-              Home
-            </Link>
-          )}
-          <Link to="/radio" className="nav-item">
-            <Radio className="size-4" />
-            {subsonicEnabled ? 'Radio' : 'Home'}
+      <div className="navbar">
+        <div className="flex justify-between items-center gap-2">
+          <Wordmark className="use-theme-text h-6 m-3 w-fit" />
+          <button
+            className="invis-btn rounded-full p-2 cursor-pointer"
+            onClick={handleSettingsContextMenu}
+          >
+            <EllipsisVertical className="use-theme-text size-4" />
+          </button>
+        </div>
+        {subsonicEnabled && (
+          <Link to="/" className="nav-item">
+            <House className="size-4" />
+            Home
           </Link>
-          {subsonicEnabled && (
-            <div className="navbar-categories">
-              <div className="navbar-category">
-                <span className="navbar-category-header">Library</span>
+        )}
+        <Link to="/radio" className="nav-item">
+          {subsonicEnabled ? <Radio className="size-4" /> : <House className="size-4" />}
+          {subsonicEnabled ? 'Radio' : 'Home'}
+        </Link>
+        <div className="navbar-categories">
+          <div className="navbar-category">
+            <span className="navbar-category-header">Library</span>
+            {subsonicEnabled && (
+              <>
                 <Link to="/library/songs" className="nav-item">
                   <Music className="size-4" />
                   Songs
@@ -86,54 +144,117 @@ function Navbar() {
                   <ListMusic className="size-4" />
                   Playlists
                 </Link>
-                <Link to="/library/stations" className="nav-item">
-                  <Radio className="size-4" />
-                  Stations
-                </Link>
-                <div className="navbar-category-header flex items-center justify-between">
-                  <span>Playlists</span>
-                  <div className="flex items-center gap-1"></div>
-                </div>
-                {playlists.map((pl) => (
-                  <Link
-                    key={pl.id}
-                    to={'/library/playlists/$playlistId'}
-                    params={{ playlistId: pl.id }}
-                    className="nav-item"
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span>{pl.name}</span>
-                      <span className="text-xs opacity-50">{pl.songCount} Songs</span>
-                    </div>
-                  </Link>
-                ))}
+              </>
+            )}
+            <Link to="/library/stations" className="nav-item">
+              <Radio className="size-4" />
+              Stations
+            </Link>
+            <Link to="/library/curations" className="nav-item">
+              <ListCheck className="size-4" />
+              Curations
+            </Link>
+            <div className="navbar-category-header flex items-center justify-between">
+              <span>{subsonicEnabled ? 'Playlists' : 'Collections'}</span>
+              <div className="flex items-center gap-1">
+                <button
+                  className="cursor-pointer use-theme-text opacity-50"
+                  onClick={() =>
+                    subsonicEnabled
+                      ? setPlaylistSort(playlistSort === 'name' ? 'songCount' : 'name')
+                      : setCurationSort(curationSort === 'name' ? 'stationCount' : 'name')
+                  }
+                >
+                  <SortDesc className="size-4" />
+                </button>
+                <button
+                  className="cursor-pointer use-theme-text opacity-50"
+                  onClick={() =>
+                    subsonicEnabled ? openCreatePlaylistModal() : openCreateCurationModal()
+                  }
+                >
+                  <Plus className="size-4" />
+                </button>
               </div>
             </div>
-          )}
+            {subsonicEnabled
+              ? playlists
+                  .sort((a, b) => {
+                    if (playlistSort === 'name') {
+                      return a.name.localeCompare(b.name)
+                    } else {
+                      return b.songCount - a.songCount
+                    }
+                  })
+                  .map((pl) => (
+                    <Link
+                      key={pl.id}
+                      to={'/library/playlists/$playlistId'}
+                      params={{ playlistId: pl.id }}
+                      className="nav-item"
+                      onContextMenu={(e) => {
+                        handlePlaylistContextMenu(e, pl)
+                      }}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <span>{pl.name}</span>
+                        <span className="text-xs opacity-50">{pl.songCount} Songs</span>
+                      </div>
+                    </Link>
+                  ))
+              : collections
+                  .sort((a, b) => {
+                    if (playlistSort === 'name') {
+                      return a.name.localeCompare(b.name)
+                    } else {
+                      return b.stations.length - a.stations.length
+                    }
+                  })
+                  .map((collection) => {
+                    return (
+                      <Link
+                        key={collection.id}
+                        to={'/library/curations/$curationId'}
+                        params={{ curationId: collection.id }}
+                        className="nav-item"
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          openContextMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            items: [
+                              {
+                                text: 'Edit',
+                                onClick: () => openEditCurationModal(collection.id),
+                                Icon() {
+                                  return <PencilLine className="size-4" />
+                                }
+                              },
+                              {
+                                text: 'Delete',
+                                onClick: () => openDeleteCurationModal(collection.id),
+                                Icon() {
+                                  return <Trash className="size-4" />
+                                }
+                              }
+                            ],
+                            onClose: () => {}
+                          })
+                        }}
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span>{collection.name}</span>
+                          <span className="text-xs opacity-50">
+                            {collection.stations.length} Stations
+                          </span>
+                        </div>
+                      </Link>
+                    )
+                  })}
+          </div>
         </div>
-      )}
-      {contextMenu && (
-        <div
-          className="context-menu"
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            zIndex: 1000
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="context-menu-item"
-            onClick={() => {
-              router.navigate({ to: '/settings' })
-              handleCloseContextMenu()
-            }}
-          >
-            <span>Settings</span>
-          </button>
-        </div>
-      )}
+      </div>
       <div className="titlebar">
         <button className="titlebar-item" onClick={handleMinimize} aria-label="Minimize window">
           <svg

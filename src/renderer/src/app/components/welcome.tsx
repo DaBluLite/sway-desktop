@@ -1,14 +1,13 @@
 import Wordmark from '@renderer/assets/wordmark'
 import { useAppSetup } from '@renderer/contexts/app-setup-context'
 import { useSubsonic } from '@renderer/contexts/subsonic-context'
-import { AudioLines, Check, ChevronLeft, ChevronRight, Radio, Save, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { AudioLines, Check, ChevronLeft, ChevronRight, Radio, Save, Search, X } from 'lucide-react'
+import { useEffect, useState, useMemo } from 'react'
+import { COUNTRIES } from '../utils/countries'
 
 function WelcomeScreenWrapper({ children }: { children: React.ReactNode }) {
-  const { setupCompleted, isInitialized } = useAppSetup()
-
+  const { isInitialized, setupCompleted } = useAppSetup()
   if (isInitialized && !setupCompleted) return <div className="welcome-screen">{children}</div>
-
   return <></>
 }
 
@@ -22,6 +21,87 @@ function WelcomeScreen1({ nextScreen }: { nextScreen: () => void }) {
         onClick={nextScreen}
       >
         <span className="text-xl">Get Started</span>
+        <ChevronRight className="size-6" />
+      </button>
+    </>
+  )
+}
+
+function SelectCountry({ nextScreen }: { nextScreen: () => void }) {
+  const { selectedCountry, setSelectedCountry } = useAppSetup()
+  const [searchTerm, setSearchTerm] = useState('')
+
+  useEffect(() => {
+    if (!selectedCountry) {
+      // Try to auto-select based on IP if possible
+      fetch('https://api.country.is/')
+        .then((res) => res.json())
+        .then((geoData) => {
+          if (geoData.country && !selectedCountry) {
+            setSelectedCountry(geoData.country)
+          }
+        })
+        .catch((err) => console.error('Failed to fetch geo data', err))
+    }
+  }, [selectedCountry, setSelectedCountry])
+
+  const filteredCountries = useMemo(() => {
+    return COUNTRIES.filter(
+      (c) =>
+        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.code.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [searchTerm])
+
+  return (
+    <>
+      <span className="text-3xl font-thin mb-8">Select your Country</span>
+
+      <div className="flex flex-col gap-4 w-120 max-h-120 mb-20 overflow-hidden">
+        <div className="relative mx-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search countries..."
+            className="w-full pl-10 pr-4 py-3 text-input rounded-xl outline-none"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 custom-scrollbar flex flex-col gap-1">
+          {filteredCountries.length > 0 ? (
+            filteredCountries.map((country) => (
+              <button
+                key={country.code}
+                onClick={() => setSelectedCountry(country.code)}
+                className={`flex items-center gap-4 px-4 py-3 border border-transparent rounded-md cursor-pointer use-transition ${
+                  selectedCountry === country.code
+                    ? 'bg-second-layer-thin dark:bg-second-layer-thin-dark border-subtle! shadow-glass'
+                    : 'hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark'
+                }`}
+              >
+                <span className="text-3xl">{country.emoji}</span>
+                <div className="flex flex-col flex-1 text-left">
+                  <span className="font-medium">{country.name}</span>
+                </div>
+                {selectedCountry === country.code && <Check className="size-6 text-accent" />}
+              </button>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-10 text-zinc-500">
+              <span>No countries found for &quot;{searchTerm}&quot;</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button
+        className="px-8 py-4 cursor-pointer flex items-center gap-2 btn-accent rounded-full absolute bottom-12 disabled:opacity-50 disabled:cursor-not-allowed"
+        onClick={nextScreen}
+        disabled={!selectedCountry}
+      >
+        <span className="text-xl">Next</span>
         <ChevronRight className="size-6" />
       </button>
     </>
@@ -45,7 +125,7 @@ function SelectExperience({
           onClick={() => setSelectedExperience('full')}
         >
           <div
-            className={`use-transition w-70 h-50 rounded-md bg-theme-bg/20 flex items-center justify-center gap-6 border-2 border-subtle ${selectedExperience === 'full' ? 'border-green-500!' : ''}`}
+            className={`use-transition w-70 h-50 rounded-md flex items-center justify-center gap-6 border-2 border-subtle ${selectedExperience === 'full' ? 'border-green-500!' : ''}`}
           >
             <div className="flex flex-col gap-2 items-center">
               <AudioLines className="size-16" />
@@ -282,7 +362,8 @@ function WelcomeScreen() {
   return (
     <WelcomeScreenWrapper>
       {currentScreen === 1 && <WelcomeScreen1 nextScreen={() => setCurrentScreen((a) => a + 1)} />}
-      {currentScreen === 2 && (
+      {currentScreen === 2 && <SelectCountry nextScreen={() => setCurrentScreen((a) => a + 1)} />}
+      {currentScreen === 3 && (
         <SelectExperience
           nextScreen={(isEnabled) => {
             if (isEnabled) {
@@ -293,7 +374,7 @@ function WelcomeScreen() {
           prevScreen={() => setCurrentScreen((a) => a - 1)}
         />
       )}
-      {currentScreen === 3 && (
+      {currentScreen === 4 && (
         <SetupSubsonic prevScreen={() => setCurrentScreen((a) => a - 1)} finish={completeSetup} />
       )}
     </WelcomeScreenWrapper>

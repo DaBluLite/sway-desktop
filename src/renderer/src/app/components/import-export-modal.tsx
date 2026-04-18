@@ -13,7 +13,6 @@ import {
   mdiInformation
 } from '@mdi/js'
 import { useFavourites } from '../contexts/favourites-context'
-import { usePlaylists } from '../contexts/playlists-context'
 import { useHistory } from '../contexts/history-context'
 import { useTheme } from '../contexts/theme-context'
 import {
@@ -24,6 +23,7 @@ import {
   validateImportData,
   type ExportData
 } from '../utils/data-export'
+import { useCurations } from '@renderer/contexts/curations-context'
 
 interface ImportExportModalProps {
   onClose: () => void
@@ -33,7 +33,7 @@ type Tab = 'export' | 'import'
 
 interface ExportOptions {
   favourites: boolean
-  playlists: boolean
+  curations: boolean
   savedStations: boolean
   history: boolean
   settings: boolean
@@ -41,7 +41,7 @@ interface ExportOptions {
 
 interface ImportOptions {
   favourites: boolean
-  playlists: boolean
+  curations: boolean
   savedStations: boolean
   history: boolean
   settings: boolean
@@ -54,14 +54,14 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const [activeTab, setActiveTab] = useState<Tab>('export')
   const [exportOptions, setExportOptions] = useState<ExportOptions>({
     favourites: true,
-    playlists: true,
+    curations: true,
     savedStations: true,
     history: true,
     settings: true
   })
   const [importOptions, setImportOptions] = useState<ImportOptions>({
     favourites: true,
-    playlists: true,
+    curations: true,
     savedStations: true,
     history: true,
     settings: true,
@@ -79,7 +79,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
   // Get all context data and methods
   const { favourites, importFavourites } = useFavourites()
-  const { playlists, importPlaylists } = usePlaylists()
+  const { collections, importCurations } = useCurations()
   const { history, importHistory } = useHistory()
   const { theme, setTheme } = useTheme()
 
@@ -89,7 +89,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
     try {
       const exportData = createExportData({
         ...(exportOptions.favourites && { favourites }),
-        ...(exportOptions.playlists && { playlists }),
+        ...(exportOptions.curations && { collections }),
         ...(exportOptions.history && { history }),
         ...(exportOptions.settings && { settings: { theme } })
       })
@@ -162,11 +162,11 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
         totalImported += count
       }
 
-      // Import playlists
-      if (importOptions.playlists && sanitized.playlists) {
-        const count = sanitized.playlists.length
-        importPlaylists(sanitized.playlists)
-        importDetails.push(`${count} playlist${count !== 1 ? 's' : ''}`)
+      // Import curations
+      if (importOptions.curations && sanitized.curations) {
+        const count = sanitized.curations.length
+        importCurations(sanitized.curations)
+        importDetails.push(`${count} curated collection${count !== 1 ? 's' : ''}`)
         totalImported += count
       }
 
@@ -224,7 +224,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
   const getDataCounts = () => {
     return {
       favourites: favourites.length,
-      playlists: playlists.length,
+      curations: collections.length,
       history: history.length
     }
   }
@@ -236,7 +236,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
 
     return {
       favourites: data.favourites?.length || 0,
-      playlists: data.playlists?.length || 0,
+      curations: data.curations?.length || 0,
       history: data.history?.length || 0,
       hasSettings: !!data.settings?.theme
     }
@@ -314,9 +314,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                     count: counts.favourites
                   },
                   {
-                    key: 'playlists' as const,
-                    label: 'Playlists',
-                    count: counts.playlists
+                    key: 'curations' as const,
+                    label: 'Curations',
+                    count: counts.curations
                   },
                   {
                     key: 'history' as const,
@@ -405,10 +405,10 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                           <span>{previewCounts.favourites} stations</span>
                         </div>
                       )}
-                      {previewCounts?.playlists !== undefined && previewCounts.playlists > 0 && (
+                      {previewCounts?.curations !== undefined && previewCounts.curations > 0 && (
                         <div className="flex justify-between text-zinc-300">
-                          <span>Playlists</span>
-                          <span>{previewCounts.playlists} playlists</span>
+                          <span>Curations</span>
+                          <span>{previewCounts.curations} curations</span>
                         </div>
                       )}
                       {previewCounts?.history !== undefined && previewCounts.history > 0 && (
@@ -439,9 +439,9 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
                         available: (previewCounts?.favourites || 0) > 0
                       },
                       {
-                        key: 'playlists' as const,
-                        label: 'Playlists',
-                        available: (previewCounts?.playlists || 0) > 0
+                        key: 'curations' as const,
+                        label: 'Curations',
+                        available: (previewCounts?.curations || 0) > 0
                       },
                       {
                         key: 'history' as const,

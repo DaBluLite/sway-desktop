@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: sway-desktop
+appId: dev.dablulite.sway
+productName: Sway Music
 directories:
   buildResources: build
 files:
@@ -33,13 +33,12 @@ linux:
     - AppImage
     - snap
     - deb
-  maintainer: electronjs.org
+    - rpm
+    - flatpak
+  maintainer: DaBluLite
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-publish:
-  provider: generic
-  url: https://example.com/auto-updates
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

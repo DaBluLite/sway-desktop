@@ -39,7 +39,14 @@ function RadiosList() {
   const { subsonicEnabled, isInitialized } = useSubsonic()
   const navigate = useNavigate()
   const [visibleCarousels, setVisibleCarousels] = useState<Set<string>>(
-    new Set(['recently-played', 'most-played-albums', 'trending', 'music', 'local'])
+    new Set([
+      'recently-played',
+      'most-played-albums',
+      'trending',
+      'music',
+      'local',
+      'newly-added-albums'
+    ])
   )
   const observerRef = useRef<IntersectionObserver | null>(null)
   const [subsonicConfigured, setSubsonicConfigured] = useState(false)
@@ -70,6 +77,19 @@ function RadiosList() {
 
     if (result.success && result.data) {
       return (result.data as { album: ExtendedAlbum[] }).album
+    }
+
+    return []
+  }
+
+  const fetchNewlyAddedAlbums = async (offset: number, size: number) => {
+    const result = await window.api.subsonic.getNewlyAddedAlbums({
+      offset: offset.toString(),
+      size: size.toString()
+    })
+
+    if (result.success && result.data) {
+      return result.data as ExtendedAlbum[]
     }
 
     return []
@@ -125,13 +145,22 @@ function RadiosList() {
 
   return (
     <div className="flex min-h-screen items-start justify-start w-full font-sans overflow-auto">
-      <main className="main-page pr-0!">
+      <main className="main-page pr-0! pb-60!">
         {subsonicConfigured && <FeaturedAlbumCarousel />}
         {subsonicConfigured && (
           <CarouselPlaceholder id="most-played-albums" visibleCarousels={visibleCarousels}>
             <AlbumCarousel
               title="Most Played Albums"
               fetchAlbums={fetchMostPlayedAlbums}
+              onAlbumPlay={handlePlayAlbum}
+            />
+          </CarouselPlaceholder>
+        )}
+        {subsonicConfigured && (
+          <CarouselPlaceholder id="newly-added-albums" visibleCarousels={visibleCarousels}>
+            <AlbumCarousel
+              title="Newly Added Albums"
+              fetchAlbums={fetchNewlyAddedAlbums}
               onAlbumPlay={handlePlayAlbum}
             />
           </CarouselPlaceholder>

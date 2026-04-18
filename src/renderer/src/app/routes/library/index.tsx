@@ -5,7 +5,6 @@ import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
 import { usePlaylists } from '@renderer/contexts/playlists-context'
 import { useLibrary } from '@renderer/contexts/library-context'
 import { useHistory } from '@renderer/contexts/history-context'
-import { StationItem } from '@renderer/components/station-item'
 import { PlaylistCarousel } from '@renderer/components/playlist-carousel'
 import { StaticStationCarousel } from '@renderer/components/static-station-carousel'
 import { AlbumCard } from '@renderer/components/album-card'
@@ -13,6 +12,8 @@ import { Station } from 'radio-browser-api'
 import { Icon } from '@mdi/react'
 import { mdiChevronRight, mdiLoading, mdiAccount, mdiMusicNote } from '@mdi/js'
 import { SubsonicAlbum, SubsonicPlaylist, SubsonicSong } from '../../../../../types/subsonic'
+import StationRow from '@renderer/components/station-row'
+import StationListHeader from '@renderer/components/station-list-header'
 
 export const Route = createFileRoute('/library/')({
   component: LibraryPage
@@ -192,8 +193,9 @@ function LibraryPage() {
                 <p className="opacity-50 mb-8 px-3">No favourite stations yet.</p>
               ) : (
                 <div className="flex flex-col gap-4 w-full px-3">
-                  {favourites.slice(0, 5).map((radio) => (
-                    <StationItem key={radio.url} station={radio} onPlay={handlePlayStation} />
+                  <StationListHeader />
+                  {favourites.slice(0, 5).map((radio, i) => (
+                    <StationRow key={radio.url} station={radio} i={i} />
                   ))}
                 </div>
               )}

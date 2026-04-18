@@ -1,4 +1,5 @@
-import { MouseEventHandler } from 'react'
+import { Radio } from 'lucide-react'
+import { MouseEventHandler, useState } from 'react'
 
 const Pin = ({
   color = '#ef4444',
@@ -110,17 +111,29 @@ const ImagePin = ({
   title?: string
   onClick?: MouseEventHandler<HTMLDivElement>
 }) => {
+  const [error, setError] = useState(false)
   return (
     <div className="inline-flex flex-col items-center" title={title} onClick={onClick}>
       <div
-        className="rounded-full overflow-hidden shadow-lg border-4"
+        className="rounded-full overflow-hidden shadow-lg border-4 bg-white"
         style={{
           width: `${size}px`,
           height: `${size}px`,
           borderColor: borderColor
         }}
       >
-        <img src={imageUrl} alt="Pin" className="w-full h-full object-cover" />
+        {!error ? (
+          <img
+            src={imageUrl}
+            alt="Pin"
+            className="w-full h-full object-cover"
+            onError={() => setError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Radio className="text-black" />
+          </div>
+        )}
       </div>
       <div
         style={{

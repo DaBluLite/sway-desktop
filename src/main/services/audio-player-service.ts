@@ -3,11 +3,11 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { Station } from 'radio-browser-api'
-import NodeMPV from 'node-mpv'
+import { StatusObject } from 'node-mpv'
+import NodeMPV from '../../common/node-mpv'
 import {
   AudioPlayerState,
   AudioPlayerCommandResult,
-  PersistedAudioState,
   RendererAudioEvent,
   AudioPlayerStateChanged,
   IAudioPlayerService,
@@ -15,9 +15,10 @@ import {
   DEFAULT_RETRY_CONFIG,
   RetryConfig,
   AudioPlayerError,
-  AudioPlayerChannels
+  AudioPlayerChannels,
+  AudioDevice
 } from '../../types/audio-player'
-import { SubsonicSong } from '../../types/subsonic'
+import { SubsonicSong, ISubsonicService } from '../../types/subsonic'
 import { unlink } from 'fs/promises'
 
 export class AudioPlayerService implements IAudioPlayerService {
@@ -29,8 +30,13 @@ export class AudioPlayerService implements IAudioPlayerService {
   private persistenceFilePath: string
   private mpvPlayer: NodeMPV | null = null
   private isInitializing = false
+  private subsonicService: ISubsonicService | null = null
+  // Scrobbling state
+  private isFirstSongAfterAppStart = true
+  private previousScrobbledSong: SubsonicSong | null = null
 
-  constructor() {
+  constructor(subsonicService?: ISubsonicService) {
+    this.subsonicService = subsonicService || null
     // Initialize persistence file path
     const userDataPath = app.getPath('userData')
     this.persistenceFilePath = path.join(userDataPath, 'audio-player-state.json')
@@ -88,21 +94,49 @@ export class AudioPlayerService implements IAudioPlayerService {
   private setupMPVEventListeners(): void {
     if (!this.mpvPlayer) return
 
+    this.mpvPlayer.observeProperty('audio-device-list')
+    this.mpvPlayer.observeProperty('playlist-pos')
+
     this.mpvPlayer.on('status', (status) => {
-      if (status['duration'] !== undefined) {
-        this.setState({ duration: status['duration'] }, 'renderer-event')
+      if (status.property === ('audio-device-list' as StatusObject['property'])) {
+        this.broadcastDeviceList()
+      }
+      if (status.property === 'playlist-pos') {
+        const index = Number(status.value)
+        if (this.state.queue && this.state.queue[index]) {
+          const newSong = this.state.queue[index]
+          const songChanged = this.state.currentSong?.id !== newSong.id
+
+          this.setState(
+            {
+              queueIndex: index,
+              currentSong: newSong,
+              currentTime: 0
+            },
+            'renderer-event'
+          )
+
+          // Handle scrobbling when songs change in queue (next/previous/manual skip)
+          if (songChanged) {
+            this.handleSongScrobbling(newSong).catch((error) => {
+              console.error('Failed to scrobble during queue change:', error)
+            })
+          }
+        }
       }
     })
 
+    this.mpvPlayer.onDurationChange((duration) => {
+      this.setState({ duration }, 'renderer-event')
+    })
+
     // Progress tracking via observed properties
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.mpvPlayer.on('timeposition', (time: any) => {
+    this.mpvPlayer.onTimePositionChange((time) => {
       this.setState({ currentTime: time }, 'renderer-event')
     })
 
     // Playback started
     this.mpvPlayer.on('started', () => {
-      console.log('MPV: Playback started')
       this.setState(
         {
           isPlaying: true,
@@ -157,34 +191,6 @@ export class AudioPlayerService implements IAudioPlayerService {
       )
     })
 
-    // Status change events
-    this.mpvPlayer.on('status', (status: { pause?: boolean }) => {
-      console.log('MPV status update:', status)
-
-      // Update playing state based on pause property
-      if (typeof status.pause === 'boolean') {
-        this.setState(
-          {
-            isPlaying: !status.pause,
-            isLoading: false
-          },
-          'renderer-event'
-        )
-      }
-    })
-
-    // End of file reached
-    this.mpvPlayer.on('ended', () => {
-      console.log('MPV: Playback ended (EOF)')
-      this.setState(
-        {
-          isPlaying: false,
-          isLoading: false
-        },
-        'ended'
-      )
-    })
-
     // Error events
     this.mpvPlayer.on('crashed', () => {
       console.error('MPV: Player crashed')
@@ -192,57 +198,209 @@ export class AudioPlayerService implements IAudioPlayerService {
     })
   }
 
+  private async resetAudioSettings(): Promise<void> {
+    if (!this.mpvPlayer) return
+
+    // Always reset everything to safe defaults before applying new settings.
+    // This ensures toggling things OFF actually removes the previous settings.
+    // Wrap all property setters in try-catch since not all properties exist on all MPV builds
+    try {
+      await this.mpvPlayer.setProperty('audio-exclusive', 'no')
+    } catch {
+      // Not supported on this platform/driver — ignore
+    }
+
+    try {
+      await this.mpvPlayer.setProperty('audio-resample', 'yes')
+    } catch {
+      // Not supported on this MPV build
+    }
+
+    try {
+      await this.mpvPlayer.setProperty('audio-pitch-correction', 'yes')
+    } catch {
+      // Not supported on this MPV build
+    }
+
+    try {
+      await this.mpvPlayer.setProperty('replaygain', 'no')
+    } catch {
+      // Not supported on this MPV build
+    }
+
+    try {
+      await this.mpvPlayer.setProperty('audio-channels', 'auto-safe')
+    } catch {
+      // Not supported on this MPV build
+    }
+
+    try {
+      await this.mpvPlayer.setProperty('af', '')
+    } catch {
+      // Not supported on this MPV build
+    }
+
+    // If the stored device has been promoted to hw: for exclusive access,
+    // restore the plughw: version on reset.
+    const { audioDevice } = this.state
+    if (audioDevice?.startsWith('alsa/hw:')) {
+      const softDevice = audioDevice.replace('alsa/hw:', 'alsa/plughw:')
+      try {
+        await this.mpvPlayer.setProperty('audio-device', softDevice)
+        // Also update the stored state so it reflects the unpromoted device
+        this.state.audioDevice = softDevice
+      } catch {
+        // Failed to set audio device
+      }
+    }
+  }
+
   private async applyAudioSettings(): Promise<void> {
     if (!this.mpvPlayer) return
 
+    const { gaplessEnabled, exclusiveEnabled, bitPerfectEnabled, audioDevice, repeat } = this.state
+
+    // 1. Always reset to defaults first so toggling OFF is clean
+    await this.resetAudioSettings()
+
+    // 2. Gapless (platform-agnostic)
     try {
-      const { gaplessEnabled, exclusiveEnabled, bitPerfectEnabled, audioDevice } = this.state
-
-      // 1. Gapless
       await this.mpvPlayer.setProperty('gapless-audio', gaplessEnabled ? 'yes' : 'no')
+    } catch {
+      // Not supported on this MPV build
+    }
 
-      // 2. Audio device
-      if (audioDevice) {
-        await this.mpvPlayer.setProperty('audio-device', audioDevice)
-      }
-
-      // 3. Exclusive output
-      if (process.platform === 'win32') {
-        await this.mpvPlayer.setProperty('audio-exclusive', exclusiveEnabled ? 'yes' : 'no')
+    // 3. Repeat mode (CRITICAL - must always apply)
+    try {
+      if (repeat === 'one') {
+        console.log('Applying repeat ONE: loop-file=inf, loop-playlist=no')
+        await this.mpvPlayer.setProperty('loop-file', 'inf')
+        await this.mpvPlayer.setProperty('loop-playlist', 'no')
+      } else if (repeat === 'all') {
+        console.log('Applying repeat ALL: loop-file=no, loop-playlist=inf')
+        await this.mpvPlayer.setProperty('loop-playlist', 'inf')
+        await this.mpvPlayer.setProperty('loop-file', 'no')
       } else {
-        // On Linux, exclusive access is achieved by using the hw: ALSA device directly.
-        // If a specific hw: device is selected, that's already exclusive.
-        // PipeWire/PulseAudio don't support audio-exclusive, it's a no-op or error.
+        console.log('Applying repeat OFF: loop-file=no, loop-playlist=no')
+        await this.mpvPlayer.setProperty('loop-file', 'no')
+        await this.mpvPlayer.setProperty('loop-playlist', 'no')
       }
-
-      // 4. Bit-perfect
-      if (bitPerfectEnabled) {
-        await this.mpvPlayer.setProperty('audio-resample', 'no')
-        await this.mpvPlayer.setProperty('audio-pitch-correction', 'no')
-        await this.mpvPlayer.setProperty('audio-channels', 'auto-safe')
-        // Clear any audio filters that would cause resampling
-        await this.mpvPlayer.setProperty('af', '')
-        // Don't normalize or adjust volume at the software level
-        await this.mpvPlayer.setProperty('replaygain', 'no')
-      } else {
-        await this.mpvPlayer.setProperty('audio-resample', 'yes')
-        await this.mpvPlayer.setProperty('audio-pitch-correction', 'yes')
-      }
-
-      if (process.platform !== 'win32' && exclusiveEnabled && audioDevice) {
-        // Promote plughw to hw for exclusive access
-        const exclusiveDevice = audioDevice.replace('alsa/plughw:', 'alsa/hw:')
-        await this.mpvPlayer.setProperty('audio-device', exclusiveDevice)
-      }
-
-      console.log('Audio settings applied:', {
-        gaplessEnabled,
-        exclusiveEnabled,
-        bitPerfectEnabled,
-        audioDevice
-      })
     } catch (error) {
-      console.error('Failed to apply audio settings:', error)
+      console.error('Failed to set repeat mode:', error)
+    }
+
+    // 4. Audio device (apply base device before any exclusive promotion)
+    if (audioDevice) {
+      try {
+        await this.mpvPlayer.setProperty('audio-device', audioDevice)
+      } catch {
+        // Not supported on this MPV build or device doesn't exist
+      }
+    }
+
+    // 5. Exclusive output — each OS has its own mechanism
+    if (exclusiveEnabled) {
+      if (process.platform === 'win32') {
+        // WASAPI exclusive mode: bypasses the Windows audio mixer entirely
+        try {
+          await this.mpvPlayer.setProperty('audio-exclusive', 'yes')
+        } catch {
+          // Not supported
+        }
+      } else if (process.platform === 'linux') {
+        // ALSA: promote plughw: → hw: for direct/exclusive access.
+        // hw: devices don't support format conversion so mpv talks to the
+        // hardware directly — no kernel mixer in the path.
+        // PipeWire/PulseAudio don't support audio-exclusive; skip it there.
+        if (audioDevice?.startsWith('alsa/plughw:')) {
+          const hwDevice = audioDevice.replace('alsa/plughw:', 'alsa/hw:')
+          try {
+            await this.mpvPlayer.setProperty('audio-device', hwDevice)
+            this.state.audioDevice = hwDevice
+          } catch {
+            // Failed to promote device
+          }
+        } else if (audioDevice?.startsWith('alsa/hw:')) {
+          // Already a hw: device, nothing to promote
+        }
+        // PipeWire / PulseAudio devices: no-op, exclusive is handled at daemon level
+      } else if (process.platform === 'darwin') {
+        // CoreAudio: audio-exclusive requests integer mode (bypasses macOS mixer)
+        try {
+          await this.mpvPlayer.setProperty('audio-exclusive', 'yes')
+        } catch {
+          // Not supported
+        }
+      }
+    }
+
+    // 6. Bit-perfect — disable all DSP/resampling that would alter the signal
+    if (bitPerfectEnabled) {
+      // No resampling — output at the source sample rate exactly
+      try {
+        await this.mpvPlayer.setProperty('audio-resample', 'no')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      // No pitch correction (which implies resampling under the hood)
+      try {
+        await this.mpvPlayer.setProperty('audio-pitch-correction', 'no')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      // Let mpv pass through the channel layout as-is
+      try {
+        await this.mpvPlayer.setProperty('audio-channels', 'auto-safe')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      // Clear any audio filter chain that could resample or process audio
+      try {
+        await this.mpvPlayer.setProperty('af', '')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      // Disable ReplayGain volume adjustment (alters signal level)
+      try {
+        await this.mpvPlayer.setProperty('replaygain', 'no')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      if (process.platform === 'darwin') {
+        // On macOS, request integer output format for true bit-perfect passthrough
+        // (requires hardware support; mpv falls back silently if unsupported)
+        try {
+          await this.mpvPlayer.setProperty('coreaudio-exclusive', 'yes')
+        } catch {
+          // Older mpv builds may not have this property
+        }
+      }
+    } else {
+      // Restore normal DSP when bit-perfect is off
+      try {
+        await this.mpvPlayer.setProperty('audio-resample', 'yes')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      try {
+        await this.mpvPlayer.setProperty('audio-pitch-correction', 'yes')
+      } catch {
+        // Not supported on this MPV build
+      }
+
+      if (process.platform === 'darwin') {
+        try {
+          await this.mpvPlayer.setProperty('coreaudio-exclusive', 'no')
+        } catch {
+          // Not supported
+        }
+      }
     }
   }
 
@@ -255,15 +413,40 @@ export class AudioPlayerService implements IAudioPlayerService {
   async getAudioDevices(): Promise<AudioDevice[]> {
     if (!this.mpvPlayer) return []
     try {
-      const devices = await this.mpvPlayer.getProperty('audio-device-list')
-      return (devices || []).map((d: any) => ({
+      const devices = (await this.mpvPlayer.getProperty('audio-device-list')) as unknown as {
+        name: string
+        description: string
+      }[]
+      return (devices || []).map((d) => ({
         name: d.name,
-        description: d.description
+        description: d.description,
+        // Devices that support exclusive/bit-perfect audio:
+        // - ALSA hw: (direct hardware) — bit-perfect capable
+        // - ALSA plughw: (can be promoted to hw:) — bit-perfect capable when promoted
+        // - CoreAudio (macOS) — bit-perfect capable
+        // - WASAPI (Windows) — bit-perfect capable
+        // - PipeWire/PulseAudio — not supported (apply DSP/resampling at daemon level)
+        supports_exclusive_audio:
+          d.name.startsWith('alsa/hw:') ||
+          d.name.startsWith('alsa/plughw:') ||
+          d.name.startsWith('coreaudio/') ||
+          d.name.startsWith('wasapi/')
       }))
     } catch (error) {
       console.error('Failed to get audio devices:', error)
       return []
     }
+  }
+
+  async broadcastDeviceList(): Promise<void> {
+    const devices = await this.getAudioDevices()
+
+    this.registeredWindows.forEach((windowId) => {
+      const window = BrowserWindow.fromId(windowId)
+      if (window && !window.isDestroyed()) {
+        window.webContents.send(AudioPlayerChannels.DEVICES_CHANGED, devices)
+      }
+    })
   }
 
   // State management
@@ -319,6 +502,37 @@ export class AudioPlayerService implements IAudioPlayerService {
     })
   }
 
+  // Scrobbling - track song playback
+  private async handleSongScrobbling(newSong: SubsonicSong): Promise<void> {
+    if (!this.subsonicService) return
+
+    try {
+      if (this.isFirstSongAfterAppStart) {
+        // First song after app start: just notify "now playing"
+        console.log(`Scrobbling now playing: ${newSong.title} (submission: false)`)
+        await this.subsonicService.scrobble(newSong.id, false)
+        this.isFirstSongAfterAppStart = false
+        this.previousScrobbledSong = newSong
+      } else {
+        // Not the first song: finalize previous track, then notify new track
+        if (this.previousScrobbledSong) {
+          console.log(
+            `Scrobbling completed: ${this.previousScrobbledSong.title} (submission: true)`
+          )
+          await this.subsonicService.scrobble(this.previousScrobbledSong.id, true)
+        }
+
+        // Now notify the new track
+        console.log(`Scrobbling now playing: ${newSong.title} (submission: false)`)
+        await this.subsonicService.scrobble(newSong.id, false)
+        this.previousScrobbledSong = newSong
+      }
+    } catch (error) {
+      console.error('Failed to scrobble song:', error)
+      // Don't throw - scrobbling failure shouldn't affect playback
+    }
+  }
+
   // Playback controls using node-mpv with full volume and equalizer support
   async playStation(station: Station): Promise<AudioPlayerCommandResult> {
     try {
@@ -342,8 +556,6 @@ export class AudioPlayerService implements IAudioPlayerService {
 
       const streamUrl = station.urlResolved || station.url
 
-      console.log(`Playing station with MPV: ${station.name} (${streamUrl})`)
-
       // Update state to loading
       this.setState({
         currentStation: station,
@@ -365,7 +577,8 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Start playback
       await this.mpvPlayer.play()
 
-      console.log(`MPV: Stream loaded, volume set to ${volumeLevel}%, playback started`)
+      // Apply loop settings for this playback session
+      await this.applyAudioSettings()
 
       return {
         success: true,
@@ -410,12 +623,12 @@ export class AudioPlayerService implements IAudioPlayerService {
       this.clearRetryTimeout()
       this.retryCounters.delete(song)
 
-      console.log(`Playing song with MPV: ${song.title} (${streamUrl})`)
-
       // Update state to loading
       this.setState({
         currentSong: song,
         currentStation: null,
+        queue: [song],
+        queueIndex: 0,
         isLoading: true,
         isSeekable: true,
         error: null,
@@ -433,6 +646,12 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Start playback
       await this.mpvPlayer.play()
 
+      // Apply loop settings for this playback session
+      await this.applyAudioSettings()
+
+      // Handle scrobbling for this song
+      await this.handleSongScrobbling(song)
+
       return {
         success: true,
         state: this.getState()
@@ -448,6 +667,172 @@ export class AudioPlayerService implements IAudioPlayerService {
         'error'
       )
 
+      return {
+        success: false,
+        error: errorMessage,
+        state: this.getState()
+      }
+    }
+  }
+
+  async playSongs(songs: SubsonicSong[], startIndex: number): Promise<AudioPlayerCommandResult> {
+    try {
+      if (!this.mpvPlayer && !this.isInitializing) {
+        await this.initializeMPV()
+      }
+
+      if (!this.mpvPlayer) {
+        throw new AudioPlayerError('MPV player not available', 'PLAYBACK_FAILED')
+      }
+
+      this.clearRetryTimeout()
+
+      console.log(`Playing playlist with MPV, starting at index ${startIndex}`)
+
+      this.setState({
+        queue: songs,
+        queueIndex: startIndex,
+        currentSong: songs[startIndex],
+        currentStation: null,
+        isLoading: true,
+        isSeekable: true,
+        error: null,
+        currentTime: 0,
+        duration: songs[startIndex].duration || null
+      })
+
+      // Stop current playback to clear things out
+      await this.mpvPlayer.stop()
+
+      // We load all songs into the MPV playlist
+      // This is more robust for gapless playback
+      for (let i = 0; i < songs.length; i++) {
+        const streamUrl = this.subsonicService?.generateStreamUrl(songs[i].id)
+        if (streamUrl) {
+          await this.mpvPlayer.load(streamUrl, i === 0 ? 'replace' : 'append')
+        }
+      }
+
+      // Go to the desired starting song if it's not the first one
+      if (startIndex > 0) {
+        await this.mpvPlayer.command('playlist-play-index', [startIndex.toString()])
+      }
+
+      // Apply volume
+      const volumeLevel = this.state.isMuted ? 0 : Math.round(this.state.volume * 100)
+      await this.mpvPlayer.volume(volumeLevel)
+
+      await this.mpvPlayer.play()
+
+      // Apply loop settings for this playback session
+      await this.applyAudioSettings()
+
+      // Handle scrobbling for the starting song
+      await this.handleSongScrobbling(songs[startIndex])
+
+      return { success: true, state: this.getState() }
+    } catch (error) {
+      console.log(error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to play songs'
+      this.setState({ error: errorMessage, isLoading: false, isPlaying: false }, 'error')
+      return { success: false, error: errorMessage, state: this.getState() }
+    }
+  }
+
+  async next(): Promise<AudioPlayerCommandResult> {
+    try {
+      if (this.mpvPlayer) {
+        const hasQueue = Array.isArray(this.state.queue) && this.state.queue.length > 0
+        const isLastSong = hasQueue && this.state.queueIndex === this.state.queue.length - 1
+
+        if (isLastSong && this.state.repeat === 'all') {
+          await this.mpvPlayer.command('playlist-play-index', ['0'])
+        } else {
+          await this.mpvPlayer.next()
+        }
+      }
+      return { success: true, state: this.getState() }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  }
+
+  async previous(): Promise<AudioPlayerCommandResult> {
+    try {
+      if (this.mpvPlayer) {
+        const isFirstSong = this.state.queueIndex === 0
+
+        if (isFirstSong && this.state.repeat === 'all' && this.state.queue) {
+          await this.mpvPlayer.command('playlist-play-index', [
+            (this.state.queue.length - 1).toString()
+          ])
+        } else {
+          await this.mpvPlayer.prev()
+        }
+      }
+      return { success: true, state: this.getState() }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  }
+
+  async addToQueue(
+    songs: SubsonicSong[],
+    position: 'next' | 'last'
+  ): Promise<AudioPlayerCommandResult> {
+    try {
+      if (!songs || songs.length === 0) {
+        return {
+          success: false,
+          error: 'No songs provided to add to queue',
+          state: this.getState()
+        }
+      }
+
+      const currentQueue = this.state.queue || []
+      let updatedQueue: SubsonicSong[]
+
+      if (position === 'next') {
+        // Insert after current song (at queueIndex + 1)
+        const insertIndex = this.state.queueIndex + 1
+        updatedQueue = [
+          ...currentQueue.slice(0, insertIndex),
+          ...songs,
+          ...currentQueue.slice(insertIndex)
+        ]
+        console.log(
+          `Adding ${songs.length} song(s) to queue at position "next" (after current song)`
+        )
+      } else {
+        // Append to the end
+        updatedQueue = [...currentQueue, ...songs]
+        console.log(`Adding ${songs.length} song(s) to queue at position "last"`)
+      }
+
+      // Update app state with new queue
+      this.setState({
+        queue: updatedQueue
+      })
+
+      // Load new songs into MPV playlist
+      if (this.mpvPlayer) {
+        for (const song of songs) {
+          const streamUrl = this.subsonicService?.generateStreamUrl(song.id)
+          if (streamUrl) {
+            // Append songs to MPV playlist
+            // Note: For 'next' position, songs are appended to the end of MPV's playlist
+            // The app state controls the logical order; MPV just plays them sequentially
+            await this.mpvPlayer.load(streamUrl, 'append')
+          }
+        }
+      }
+
+      return {
+        success: true,
+        state: this.getState()
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to add to queue'
       return {
         success: false,
         error: errorMessage,
@@ -572,7 +957,6 @@ export class AudioPlayerService implements IAudioPlayerService {
       // Apply volume to MPV player
       if (this.mpvPlayer) {
         await this.mpvPlayer.volume(volumeLevel)
-        console.log(`MPV: Volume set to ${volumeLevel}%`)
       }
 
       this.setState({
@@ -602,10 +986,8 @@ export class AudioPlayerService implements IAudioPlayerService {
       if (this.mpvPlayer) {
         if (newMutedState) {
           await this.mpvPlayer.mute(true)
-          console.log('MPV: Audio muted')
         } else {
           await this.mpvPlayer.mute(false)
-          console.log('MPV: Audio unmuted')
         }
       }
 
@@ -645,11 +1027,9 @@ export class AudioPlayerService implements IAudioPlayerService {
       if (eqFilters.length > 0) {
         const filterChain = `lavfi=[${eqFilters.join(',')}]`
         await this.mpvPlayer.setProperty('af', filterChain)
-        console.log(`MPV: Equalizer applied: ${filterChain}`)
       } else {
         // Clear equalizer
         await this.mpvPlayer.setProperty('af', '')
-        console.log('MPV: Equalizer cleared')
       }
     } catch (error) {
       console.error('Failed to set equalizer:', error)
@@ -686,7 +1066,6 @@ export class AudioPlayerService implements IAudioPlayerService {
       }
 
       await this.mpvPlayer.setProperty('stream-record', outputPath)
-      console.log(`MPV: Recording started to ${outputPath}`)
 
       return {
         success: true,
@@ -709,7 +1088,6 @@ export class AudioPlayerService implements IAudioPlayerService {
       }
 
       await this.mpvPlayer.setProperty('stream-record', '')
-      console.log('MPV: Recording stopped')
 
       return {
         success: true,
@@ -846,9 +1224,13 @@ export class AudioPlayerService implements IAudioPlayerService {
   // Persistence
   async saveState(): Promise<void> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const persistedState: any = {
         currentStation: this.state.currentStation,
         currentSong: this.state.currentSong,
+        queue: this.state.queue,
+        queueIndex: this.state.queueIndex,
+        repeat: this.state.repeat,
         volume: this.state.volume,
         isMuted: this.state.isMuted,
         gaplessEnabled: this.state.gaplessEnabled,
@@ -867,6 +1249,7 @@ export class AudioPlayerService implements IAudioPlayerService {
   async loadState(): Promise<void> {
     try {
       const data = await fs.readFile(this.persistenceFilePath, 'utf-8')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const persistedState: any = JSON.parse(data)
 
       // Restore persisted state, but keep dynamic state as defaults
@@ -874,6 +1257,9 @@ export class AudioPlayerService implements IAudioPlayerService {
         ...DEFAULT_AUDIO_STATE,
         currentStation: persistedState.currentStation,
         currentSong: persistedState.currentSong,
+        queue: persistedState.queue || [],
+        queueIndex: persistedState.queueIndex ?? -1,
+        repeat: persistedState.repeat ?? 'off',
         volume: persistedState.volume ?? DEFAULT_AUDIO_STATE.volume,
         isMuted: persistedState.isMuted ?? DEFAULT_AUDIO_STATE.isMuted,
         gaplessEnabled: persistedState.gaplessEnabled ?? DEFAULT_AUDIO_STATE.gaplessEnabled,

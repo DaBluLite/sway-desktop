@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, ReactNode } from 'react'
 import { useSearch } from '@renderer/contexts/search-context'
 import {
   SubsonicSearchResult,
@@ -8,29 +8,39 @@ import {
   SubsonicPlaylist
 } from '../../../../../types/subsonic'
 import { Station } from 'radio-browser-api'
-import { StationItem } from '@renderer/components/station-item'
 import { AlbumCard } from '@renderer/components/album-card'
 import { PlaylistCard } from '@renderer/components/playlist-card'
 import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
 import { usePlaylists } from '@renderer/contexts/playlists-context'
 import { useSubsonic } from '@renderer/contexts/subsonic-context'
-import { Icon } from '@mdi/react'
+import { AlbumCarousel } from '@renderer/components/album-carousel'
+import { StationCarousel } from '@renderer/components/station-carousel'
+import { ArtistCarousel } from '@renderer/components/artist-carousel'
+import SongRow from '@renderer/components/song-row'
 import {
-  mdiMagnify,
-  mdiLoading,
-  mdiClose,
-  mdiAccount,
-  mdiMusicNote,
-  mdiAlbum,
-  mdiPlaylistMusic,
-  mdiRadioTower
-} from '@mdi/js'
+  Disc3,
+  ListCheck,
+  ListMusic,
+  LoaderCircle,
+  Music,
+  Radio,
+  Search,
+  Star,
+  User,
+  X
+} from 'lucide-react'
+import SongListHeader from '@renderer/components/song-list-header'
+import { ArtistCard } from '@renderer/components/artist-card'
+import { useCurations } from '@renderer/contexts/curations-context'
+import { CurationCard } from '@renderer/components/curation-card'
+import StationRow from '@renderer/components/station-row'
+import StationListHeader from '@renderer/components/station-list-header'
 
 export const Route = createFileRoute('/search/')({
   component: SearchPage
 })
 
-type SearchTab = 'top' | 'artists' | 'songs' | 'albums' | 'playlists' | 'stations'
+type SearchTab = 'top' | 'artists' | 'songs' | 'albums' | 'playlists' | 'stations' | 'curations'
 
 function SearchPage() {
   const { searchValue, setSearchValue } = useSearch()
@@ -43,6 +53,7 @@ function SearchPage() {
   const [subsonicResults, setSubsonicResults] = useState<SubsonicSearchResult | null>(null)
   const [stationResults, setStationResults] = useState<Station[]>([])
   const router = useRouter()
+  const { collections } = useCurations()
 
   useEffect(() => {
     window.api.subsonic.getCredentialsStatus().then((status) => {
@@ -108,15 +119,6 @@ function SearchPage() {
     }
   }
 
-  const handlePlaySong = (song: SubsonicSong) => {
-    // Play this song and others in the same search result as context
-    if (subsonicResults?.song) {
-      playSong(subsonicResults.song, song.id)
-    } else {
-      playSong([song], song.id)
-    }
-  }
-
   const handlePlayPlaylist = useCallback(
     async (album: SubsonicPlaylist) => {
       const result = await window.api.subsonic.getPlaylist(album.id)
@@ -128,19 +130,20 @@ function SearchPage() {
     [playSong]
   )
 
-  const tabs: { id: SearchTab; label: string; icon: string }[] = [
-    { id: 'top', label: 'Top Results', icon: mdiMagnify },
-    { id: 'artists', label: 'Artists', icon: mdiAccount },
-    { id: 'songs', label: 'Songs', icon: mdiMusicNote },
-    { id: 'albums', label: 'Albums', icon: mdiAlbum },
-    { id: 'playlists', label: 'Playlists', icon: mdiPlaylistMusic },
-    { id: 'stations', label: 'Radio Stations', icon: mdiRadioTower }
+  const tabs: { id: SearchTab; label: string; Icon(): ReactNode }[] = [
+    { id: 'top', label: 'Top Results', Icon: () => <Star className="size-4" /> },
+    { id: 'artists', label: 'Artists', Icon: () => <User className="size-4" /> },
+    { id: 'songs', label: 'Songs', Icon: () => <Music className="size-4" /> },
+    { id: 'albums', label: 'Albums', Icon: () => <Disc3 className="size-4" /> },
+    { id: 'playlists', label: 'Playlists', Icon: () => <ListMusic className="size-4" /> },
+    { id: 'stations', label: 'Radio Stations', Icon: () => <Radio className="size-4" /> },
+    { id: 'curations', label: 'Curations', Icon: () => <ListCheck className="size-4" /> }
   ]
 
   if (!searchValue.trim()) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-64px)] opacity-50">
-        <Icon path={mdiMagnify} size={4} className="mb-4" />
+        <Search className="mb-4 size-4" />
         <h2 className="text-xl font-bold">Search for your favorite music</h2>
         <p>Artists, albums, songs, and radio stations</p>
       </div>
@@ -148,245 +151,194 @@ function SearchPage() {
   }
 
   return (
-    <div className="flex flex-col w-full h-full px-8 pt-4 pb-24 overflow-y-auto">
-      <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar py-2 shrink-0">
-        {tabs.map((tab) => (
+    <>
+      <div className="settings-sidebar-wrapper">
+        {tabs.map(({ id, Icon, label }) => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-all ${
-              activeTab === tab.id
-                ? 'bg-theme-text text-theme-bg font-bold'
-                : 'bg-theme-bg/10 hover:bg-theme-bg/20'
-            }`}
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={`settings-sidebar-item flex items-center gap-2 ${activeTab === id ? 'active' : ''}`}
           >
-            <Icon path={tab.icon} size={0.7} />
-            {tab.label}
+            <Icon />
+            {label}
           </button>
         ))}
       </div>
+      <div className="flex flex-col w-full h-full px-8 pt-4 pb-24 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20 opacity-50">
+            <LoaderCircle className="animate-spin size-10" />
+            <p className="mt-4">Searching...</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-8">
+            {activeTab === 'top' && (
+              <>
+                {/* Top Results View */}
+                <div className="grid grid-cols-1 gap-8">
+                  {/* Songs Section */}
+                  {subsonicResults && subsonicResults.song && subsonicResults.song.length > 0 && (
+                    <section>
+                      <h3 className="text-xl font-bold mb-4">Songs</h3>
+                      <div className="flex flex-col gap-2">
+                        {subsonicResults.song.slice(0, 4).map((song, i) => (
+                          <SongRow
+                            key={song.id}
+                            song={song}
+                            i={i}
+                            playlist={subsonicResults.song || []}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </div>
 
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 opacity-50">
-          <Icon path={mdiLoading} size={3} spin />
-          <p className="mt-4">Searching...</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-8">
-          {activeTab === 'top' && (
-            <>
-              {/* Top Results View */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Artists Section */}
-                {subsonicResults?.artist && subsonicResults.artist.length > 0 && (
-                  <section>
-                    <h3 className="text-xl font-bold mb-4">Artists</h3>
-                    <div className="flex flex-col gap-2">
-                      {subsonicResults.artist.slice(0, 3).map((artist) => (
-                        <button
-                          key={artist.id}
-                          onClick={() =>
-                            router.navigate({
-                              to: `/artist/$artistId`,
-                              params: { artistId: artist.id }
-                            })
-                          }
-                          className="flex items-center gap-4 p-3 rounded-xl hover:bg-theme-bg/10 transition-all text-left"
-                        >
-                          <div className="w-12 h-12 rounded-full bg-theme-bg/20 overflow-hidden flex items-center justify-center shrink-0">
-                            <Icon path={mdiAccount} size={1} className="opacity-50" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold truncate">{artist.name}</p>
-                            <p className="text-sm opacity-50">
-                              Artist • {artist.albumCount} albums
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
+                {/* Albums Carousel */}
+                {subsonicResults && subsonicResults.album && subsonicResults.album.length > 0 && (
+                  <AlbumCarousel
+                    fetchAlbums={(offset, limit) => {
+                      return new Promise((resolve) => {
+                        const albums =
+                          subsonicResults.album
+                            ?.slice(offset, offset + limit)
+                            .map((album) => ({ ...album, title: album.name })) || []
+                        resolve(albums)
+                      })
+                    }}
+                    onAlbumPlay={handlePlayAlbum}
+                    title="Albums"
+                  />
                 )}
 
-                {/* Songs Section */}
-                {subsonicResults?.song && subsonicResults.song.length > 0 && (
-                  <section>
-                    <h3 className="text-xl font-bold mb-4">Songs</h3>
-                    <div className="flex flex-col gap-2">
-                      {subsonicResults.song.slice(0, 4).map((song) => (
-                        <div
-                          key={song.id}
-                          className="flex items-center gap-4 p-3 rounded-xl hover:bg-theme-bg/10 transition-all group"
-                        >
-                          <div className="w-12 h-12 rounded-lg bg-theme-bg/20 overflow-hidden shrink-0 relative">
-                            <Icon
-                              path={mdiMusicNote}
-                              size={1}
-                              className="opacity-50 m-auto absolute inset-0"
-                            />
-                            <button
-                              onClick={() => handlePlaySong(song)}
-                              className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Icon path={mdiMusicNote} size={1} color="white" />
-                            </button>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold truncate">{song.title}</p>
-                            <p className="text-sm opacity-50 truncate">
-                              {song.artist} • {song.album}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                {/* Artists Carousel */}
+                {subsonicResults && subsonicResults.artist && subsonicResults.artist.length > 0 && (
+                  <ArtistCarousel
+                    fetchArtists={(offset, limit) => {
+                      return new Promise((resolve) => {
+                        const artists =
+                          subsonicResults.artist
+                            ?.slice(offset, offset + limit)
+                            .map((artist) => ({ ...artist, title: artist.name })) || []
+                        resolve(artists)
+                      })
+                    }}
+                    title="Artists"
+                  />
+                )}
+
+                {/* Stations Grid */}
+                {stationResults.length > 0 && (
+                  <StationCarousel
+                    fetchStations={(offset, limit) => {
+                      return new Promise((resolve) => {
+                        const stations = stationResults.slice(offset, offset + limit)
+                        resolve(stations)
+                      })
+                    }}
+                    title="Radio Stations"
+                    onStationPlay={play}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'artists' && (
+              <div className="overflow-y-auto flex flex-wrap px-8 pt-8 pb-35 gap-x-4">
+                {subsonicResults?.artist?.map((artist) => (
+                  <ArtistCard artist={artist} key={artist.id} />
+                ))}
+                {!subsonicResults?.artist?.length && <p className="opacity-50">No artists found</p>}
+              </div>
+            )}
+
+            {activeTab === 'songs' && (
+              <div className="flex flex-col gap-1 pb-30">
+                <SongListHeader />
+                {subsonicResults &&
+                  subsonicResults.song &&
+                  subsonicResults.song.length > 0 &&
+                  subsonicResults.song.map((song, i) => (
+                    <SongRow
+                      key={song.id}
+                      song={song}
+                      i={i}
+                      playlist={subsonicResults.song || []}
+                    />
+                  ))}
+                {!subsonicResults?.song?.length && <p className="opacity-50">No songs found</p>}
+              </div>
+            )}
+
+            {activeTab === 'albums' && (
+              <div className="overflow-y-auto flex flex-wrap px-8 pt-8 pb-35 gap-x-4">
+                {subsonicResults?.album?.map((album) => (
+                  <AlbumCard
+                    key={album.id}
+                    album={{ ...album, title: album.name }}
+                    onPlay={() => handlePlayAlbum(album)}
+                  />
+                ))}
+                {!subsonicResults?.album?.length && <p className="opacity-50">No albums found</p>}
+              </div>
+            )}
+
+            {activeTab === 'playlists' && (
+              <div className="overflow-y-auto flex flex-wrap px-8 pt-8 pb-35 gap-x-4">
+                {filteredPlaylists.map((playlist) => (
+                  <PlaylistCard key={playlist.id} playlist={playlist} onPlay={handlePlayPlaylist} />
+                ))}
+                {filteredPlaylists.length === 0 && <p className="opacity-50">No playlists found</p>}
+              </div>
+            )}
+
+            {activeTab === 'curations' && (
+              <div className="overflow-y-auto flex flex-wrap px-8 pt-8 pb-35 gap-x-4">
+                {collections.map((collection) => (
+                  <CurationCard key={collection.id} curation={collection} />
+                ))}
+                {collections.length === 0 && <p className="opacity-50">No collections found</p>}
+              </div>
+            )}
+
+            {activeTab === 'stations' && (
+              <div className="flex flex-col gap-1 pb-30">
+                <StationListHeader />
+                {stationResults.map((station, i) => (
+                  <StationRow key={station.url} station={station} i={i} />
+                ))}
+                {stationResults.length === 0 && (
+                  <p className="opacity-50">No radio stations found</p>
                 )}
               </div>
-
-              {/* Albums Carousel */}
-              {subsonicResults?.album && subsonicResults.album.length > 0 && (
-                <section>
-                  <h3 className="text-xl font-bold mb-4">Albums</h3>
-                  <div className="flex gap-4 overflow-x-auto no-scrollbar pb-4">
-                    {subsonicResults.album.slice(0, 10).map((album) => (
-                      <div key={album.id} className="w-48 shrink-0">
-                        <AlbumCard
-                          album={{ ...album, title: album.name }}
-                          onPlay={() => handlePlayAlbum(album)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              {/* Stations Grid */}
-              {stationResults.length > 0 && (
-                <section>
-                  <h3 className="text-xl font-bold mb-4">Radio Stations</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {stationResults.slice(0, 6).map((station) => (
-                      <StationItem key={station.url} station={station} onPlay={play} />
-                    ))}
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-
-          {activeTab === 'artists' && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {subsonicResults?.artist?.map((artist) => (
-                <button
-                  key={artist.id}
-                  onClick={() =>
-                    router.navigate({ to: `/artist/$artistId`, params: { artistId: artist.id } })
-                  }
-                  className="flex flex-col items-center text-center gap-4 p-4 rounded-2xl hover:bg-theme-bg/10 transition-all"
-                >
-                  <div className="w-32 h-32 rounded-full bg-theme-bg/20 overflow-hidden flex items-center justify-center shadow-lg">
-                    <Icon path={mdiAccount} size={2.5} className="opacity-20" />
-                  </div>
-                  <div className="w-full">
-                    <p className="font-bold truncate">{artist.name}</p>
-                    <p className="text-sm opacity-50">{artist.albumCount} albums</p>
-                  </div>
-                </button>
-              ))}
-              {!subsonicResults?.artist?.length && <p className="opacity-50">No artists found</p>}
-            </div>
-          )}
-
-          {activeTab === 'songs' && (
-            <div className="flex flex-col gap-1">
-              {subsonicResults?.song?.map((song) => (
-                <div
-                  key={song.id}
-                  className="flex items-center gap-4 p-2 rounded-xl hover:bg-theme-bg/5 transition-all group"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-theme-bg/10 flex items-center justify-center shrink-0 relative">
-                    <Icon path={mdiMusicNote} size={0.8} className="opacity-30" />
-                    <button
-                      onClick={() => handlePlaySong(song)}
-                      className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Icon path={mdiMusicNote} size={0.8} color="white" />
-                    </button>
-                  </div>
-                  <div className="flex-1 min-w-0 grid grid-cols-2 gap-4">
-                    <div className="truncate">
-                      <p className="font-bold truncate">{song.title}</p>
-                      <p className="text-xs opacity-50 truncate">{song.artist}</p>
-                    </div>
-                    <p className="text-sm opacity-50 truncate flex items-center">{song.album}</p>
-                  </div>
-                  <p className="text-sm opacity-50 w-12 text-right">
-                    {Math.floor(song.duration / 60)}:
-                    {(song.duration % 60).toString().padStart(2, '0')}
-                  </p>
-                </div>
-              ))}
-              {!subsonicResults?.song?.length && <p className="opacity-50">No songs found</p>}
-            </div>
-          )}
-
-          {activeTab === 'albums' && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-              {subsonicResults?.album?.map((album) => (
-                <AlbumCard
-                  key={album.id}
-                  album={{ ...album, title: album.name }}
-                  onPlay={() => handlePlayAlbum(album)}
-                />
-              ))}
-              {!subsonicResults?.album?.length && <p className="opacity-50">No albums found</p>}
-            </div>
-          )}
-
-          {activeTab === 'playlists' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredPlaylists.map((playlist) => (
-                <PlaylistCard key={playlist.id} playlist={playlist} onPlay={handlePlayPlaylist} />
-              ))}
-              {filteredPlaylists.length === 0 && <p className="opacity-50">No playlists found</p>}
-            </div>
-          )}
-
-          {activeTab === 'stations' && (
-            <div className="flex flex-col gap-4">
-              {stationResults.map((station) => (
-                <StationItem key={station.url} station={station} onPlay={play} />
-              ))}
-              {stationResults.length === 0 && <p className="opacity-50">No radio stations found</p>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {!isLoading &&
-        searchValue &&
-        stationResults.length === 0 &&
-        (!subsonicResults ||
-          (!subsonicResults.artist?.length &&
-            !subsonicResults.album?.length &&
-            !subsonicResults.song?.length)) &&
-        filteredPlaylists.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 opacity-50">
-            <Icon path={mdiClose} size={3} className="mb-4" />
-            <h2 className="text-xl font-bold">No results found for &quot;{searchValue}&quot;</h2>
-            <p className="mb-6">Try searching for something else</p>
-            <button
-              onClick={() => {
-                setSearchValue('')
-                router.navigate({ to: subsonicEnabled ? '/' : '/radio' })
-              }}
-              className="px-6 py-2 bg-theme-text text-theme-bg rounded-full font-bold"
-            >
-              Clear search
-            </button>
+            )}
           </div>
         )}
-    </div>
+
+        {!isLoading &&
+          searchValue &&
+          stationResults.length === 0 &&
+          (!subsonicResults ||
+            (!subsonicResults.artist?.length &&
+              !subsonicResults.album?.length &&
+              !subsonicResults.song?.length)) &&
+          filteredPlaylists.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 opacity-50">
+              <X className="mb-4 size-12" />
+              <h2 className="text-xl font-bold">No results found for &quot;{searchValue}&quot;</h2>
+              <p className="mb-6">Try searching for something else</p>
+              <button
+                onClick={() => {
+                  setSearchValue('')
+                  router.navigate({ to: subsonicEnabled ? '/' : '/radio' })
+                }}
+                className="px-6 py-2 bg-theme-text text-theme-bg rounded-full font-bold"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+      </div>
+    </>
   )
 }

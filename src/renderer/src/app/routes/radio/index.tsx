@@ -4,6 +4,7 @@ import { useHistory } from '@renderer/contexts/history-context'
 import { StationCarousel } from '@renderer/components/station-carousel'
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { Station } from 'radio-browser-api'
+import { FeaturedStationCarousel } from '@renderer/components/featured-stations-carousel'
 
 export const Route = createFileRoute('/radio/')({
   component: RadiosList
@@ -112,8 +113,9 @@ function RadiosList() {
   }, [])
 
   return (
-    <div className="flex min-h-screen items-start justify-start w-full font-sans overflow-auto">
+    <div className="flex min-h-screen items-start justify-start w-full font-sans overflow-auto pb-60">
       <main className="main-page pr-0!">
+        <FeaturedStationCarousel />
         {/* Recently Played - only show if user has history */}
         {recentlyPlayed.length > 0 && (
           <CarouselPlaceholder id="recently-played" visibleCarousels={visibleCarousels}>

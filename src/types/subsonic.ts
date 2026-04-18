@@ -216,6 +216,10 @@ export const SubsonicChannels = {
   GET_STREAM_BASE_URL: 'subsonic:get-stream-base-url',
   GET_SEARCH_RESULTS: 'subsonic:get-search-results',
   PING: 'subsonic:ping',
+  SCROBBLE: 'subsonic:scrobble',
+  REPORT_PLAYBACK: 'subsonic:report-playback',
+  GET_NEWLY_ADDED_ALBUMS: 'subsonic:get-newly-added-albums',
+  GET_TOP_SONGS: 'subsonic:get-top-songs',
 
   // Events
   CREDENTIALS_CHANGED: 'subsonic:credentials-changed'
@@ -247,11 +251,19 @@ export interface ISubsonicService {
     comment?: string
   ): Promise<SubsonicCommandResult>
   replacePlaylistSongs(playlistId: string, songIds: string[]): Promise<SubsonicCommandResult>
-  getCoverArtUrl(id: string): Promise<string | null>
+  getCoverArtUrl(id: string): string | null
   getMostPlayed(options?: { offset: string; size: string }): Promise<SubsonicCommandResult>
-  getRandomAlbums(options?: { size: string }): Promise<SubsonicCommandResult>
+  getRandomAlbums(options?: { size: string; offset: string }): Promise<SubsonicCommandResult>
+  getNewlyAddedAlbums(options?: { size: string; offset: string }): Promise<SubsonicCommandResult>
   search(options: SubsonicSearchCommand): Promise<SubsonicCommandResult>
   getStarred(): Promise<SubsonicCommandResult>
+  getTopSongs(artist: string, count?: string): Promise<SubsonicCommandResult>
+  scrobble(songId: string, submission: boolean): Promise<SubsonicCommandResult>
+  reportPlayback(
+    songId: string,
+    position: number,
+    state: 'starting' | 'playing' | 'paused' | 'stopped'
+  ): Promise<SubsonicCommandResult>
   star(options: {
     id?: string
     artistId?: string
@@ -296,9 +308,12 @@ export interface SubsonicAPI {
   replacePlaylistSongs(playlistId: string, songIds: string[]): Promise<SubsonicCommandResult>
   getCoverArtUrl(id: string): Promise<string | null>
   getMostPlayed(options?: { offset: string; size: string }): Promise<SubsonicCommandResult>
-  getRandomAlbums(options?: { size: string }): Promise<SubsonicCommandResult>
+  getRandomAlbums(options?: { size: string; offset: string }): Promise<SubsonicCommandResult>
+  getNewlyAddedAlbums(options?: { size: string; offset: string }): Promise<SubsonicCommandResult>
   search(options: SubsonicSearchCommand): Promise<SubsonicCommandResult>
   getStarred(): Promise<SubsonicCommandResult>
+  getTopSongs(artist: string, count?: string): Promise<SubsonicCommandResult>
+  scrobble(songId: string, submission: boolean): Promise<SubsonicCommandResult>
   star(options: {
     id?: string
     artistId?: string
@@ -311,6 +326,11 @@ export interface SubsonicAPI {
   }): Promise<SubsonicCommandResult>
   stream(songId: string): Promise<SubsonicCommandResult>
   generateStreamUrl(songId: string): Promise<string | null>
+  reportPlayback(
+    songId: string,
+    position: number,
+    state: 'starting' | 'playing' | 'paused' | 'stopped'
+  ): Promise<SubsonicCommandResult>
 
   // Event listeners
   onCredentialsChanged(
@@ -329,8 +349,10 @@ export class SubsonicError extends Error {
       | 'INVALID_SONG_ID'
       | 'INVALID_ALBUM_ID'
       | 'INVALID_ARTIST_ID'
+      | 'INVALID_MESSAGE'
       | 'PLAYBACK_FAILED'
       | 'STORAGE_ERROR'
+      | 'INVALID_ARTIST'
       | 'UNKNOWN'
   ) {
     super(message)
@@ -346,7 +368,7 @@ export interface SubsonicConfig {
 }
 
 export const DEFAULT_SUBSONIC_CONFIG: SubsonicConfig = {
-  clientName: 'SwayDesktop',
+  clientName: 'Sway Desktop',
   apiVersion: '1.12.0',
   saltLength: 16
 }

@@ -1,25 +1,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Icon } from '@mdi/react'
 import { mdiLoading, mdiMusicNoteOff } from '@mdi/js'
-import { fetchTrackDataCached, TrackInfo, LyricsResult } from '../lib/lyrics'
+import { fetchTrackDataCached, LyricsResult } from '../lib/lyrics'
 import { SubsonicSong } from '../../../../types/subsonic'
 import { useAudioPlayer } from '../contexts/audio-player-context'
 
 interface LyricsPanelProps {
-  streamTitle: string | null
-  stationFavicon?: string
-  song?: SubsonicSong | null
+  song: SubsonicSong
 }
 
-export const LyricsPanel: React.FC<LyricsPanelProps> = ({
-  streamTitle,
-  song
-}: LyricsPanelProps) => {
+export const LyricsPanel: React.FC<LyricsPanelProps> = ({ song }: LyricsPanelProps) => {
   const { currentTime, seek, isSeekable } = useAudioPlayer()
-  const [track, setTrack] = useState<TrackInfo | null>(null)
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const lastIdentifierRef = useRef<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
   const activeLyricRef = useRef<HTMLDivElement>(null)
@@ -37,7 +30,6 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
       // Check if this request was aborted
       if (abortControllerRef.current?.signal.aborted) return
 
-      setTrack(result.track)
       setLyrics(result.lyrics)
     } catch (error) {
       // Ignore abort errors
@@ -47,36 +39,19 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
       setIsLoading(false)
     }
   }, [])
+
   useEffect(() => {
-    const identifier = song ? `song-${song.id}` : streamTitle || null
-
-    if (!identifier) {
-      setTrack(null)
-      setLyrics(null)
-      setIsLoading(false)
-      lastIdentifierRef.current = null
-      return
-    }
-
-    if (identifier === lastIdentifierRef.current) return
-
-    lastIdentifierRef.current = identifier
     setIsLoading(true)
     setLyrics(null)
-    setTrack(null)
 
-    if (song) {
-      fetchData(song.title, song.artist)
-    } else if (streamTitle) {
-      fetchData(streamTitle)
-    }
+    fetchData(song.title, song.artists.map((a) => a.name).join(','))
 
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [streamTitle, song, fetchData])
+  }, [song, fetchData])
 
   // Scroll to active lyric
   useEffect(() => {
@@ -87,10 +62,6 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
       })
     }
   }, [currentTime, lyrics?.syncedLyrics])
-
-  if (!streamTitle && !song) {
-    return null
-  }
 
   const activeLyricIndex = lyrics?.syncedLyrics
     ? lyrics.syncedLyrics.findLastIndex((line) => line.time <= currentTime)
@@ -115,9 +86,9 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
                   key={`${line.time}-${index}`}
                   ref={index === activeLyricIndex ? activeLyricRef : null}
                   onClick={() => isSeekable && seek(line.time)}
-                  className={`text-3xl font-black transition-all duration-500 leading-tight tracking-tight ${
+                  className={`text-3xl font-black transition-all duration-500 leading-tight origin-left tracking-tight ${
                     index === activeLyricIndex
-                      ? 'text-white scale-105 origin-left'
+                      ? 'text-white scale-105 text-shadow-white/20 text-shadow-md'
                       : index < activeLyricIndex
                         ? 'text-white/40 hover:text-white/60'
                         : 'text-white/20 hover:text-white/40'
@@ -141,7 +112,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({
               </div>
               <div className="text-center">
                 <p className="font-medium text-zinc-400">
-                  {!(track || song)
+                  {!song
                     ? 'No track information found'
                     : lyrics?.error === 'Not found'
                       ? 'Lyrics not found'

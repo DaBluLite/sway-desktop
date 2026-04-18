@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { SubsonicAlbum } from '../../../../types/subsonic'
 import { useRouter } from '@tanstack/react-router'
 import { Disc3, Play } from 'lucide-react'
@@ -81,9 +81,8 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({ album, onPlay }: AlbumCard
         <p className="station-card-tags opacity-0!">
           {album.artists.map(({ name, id }, i) => {
             return (
-              <>
+              <Fragment key={id}>
                 <span
-                  key={id}
                   className="hover:underline"
                   onClick={(e) => {
                     e.stopPropagation()
@@ -93,7 +92,7 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({ album, onPlay }: AlbumCard
                   {name}
                 </span>
                 {i < album.artists.length - 1 && <span className="mr-1">, </span>}
-              </>
+              </Fragment>
             )
           })}
         </p>
@@ -102,9 +101,8 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({ album, onPlay }: AlbumCard
           <p className="station-card-tags">
             {album.artists.map(({ name, id }, i) => {
               return (
-                <>
+                <Fragment key={id}>
                   <span
-                    key={id}
                     className="hover:underline"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -115,7 +113,7 @@ export const AlbumCard: React.FC<AlbumCardProps> = ({ album, onPlay }: AlbumCard
                   </span>
 
                   {i < album.artists.length - 1 && <span className="mr-1">, </span>}
-                </>
+                </Fragment>
               )
             })}
           </p>

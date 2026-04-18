@@ -1,13 +1,7 @@
 import { Station } from 'radio-browser-api'
 import { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { SubsonicSong } from '../../../../types/subsonic'
-import {
-  AudioPlayerState,
-  AudioPlayerChannels,
-  AudioPlayerStateChanged,
-  RepeatMode,
-  AudioDevice
-} from '../../../../types/audio-player'
+import { AudioPlayerState, RepeatMode, AudioDevice } from '../../../../types/audio-player'
 import { getItem, setItem, STORES } from '../lib/indexeddb'
 
 interface AudioPlayerContextType {
@@ -46,7 +40,9 @@ interface AudioPlayerContextType {
   toggleMute: () => void
   updateSettings: (settings: Partial<AudioPlayerState>) => Promise<void>
   getAudioDevices: () => Promise<AudioDevice[]>
+  refreshDevices: () => Promise<void>
   onSongEnded: (callback: () => void) => () => void
+  onDevicesChanged: (callback: (devices: AudioDevice[]) => void) => () => void
 
   // Queue Controls
   addToQueue: (song: SubsonicSong) => void
@@ -78,7 +74,7 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
   const [originalQueue, setOriginalQueue] = useState<SubsonicSong[]>([])
   const [shuffledQueue, setShuffledQueue] = useState<SubsonicSong[]>([])
   const [shuffle, setShuffle] = useState(false)
-  const [repeat, setRepeat] = useState<RepeatMode>('off')
+  const [repeat, setRepeatState] = useState<RepeatMode>('off')
   const [volume, setVolumeState] = useState(0.7)
   const [isMuted, setIsMuted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -123,6 +119,15 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
         setCurrentTime(state.currentTime)
         setDuration(state.duration || 0)
         setIsSeekable(state.isSeekable)
+        setRepeatState(state.repeat)
+
+        if (state.queue && state.queue.length > 0) {
+          if (shuffle) {
+            setShuffledQueue(state.queue)
+          } else {
+            setOriginalQueue(state.queue)
+          }
+        }
 
         // Update settings state
         setGaplessEnabled(state.gaplessEnabled)
@@ -152,6 +157,7 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
 
         // Detect song end
         if (event.source === 'ended') {
+          console.log('AudioPlayer: Received ended event from main process')
           onSongEndedCallbacks.current.forEach((cb) => cb())
         }
       })
@@ -205,112 +211,57 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
     await window.api.audioPlayer.playStation(station)
   }, [])
 
-  const playSongInternal = useCallback(async (song: SubsonicSong) => {
-    try {
-      const stream = await window.api.subsonic.generateStreamUrl(song.id)
-      if (!stream) {
-        throw new Error('Failed to generate stream URL')
-      }
-      await window.api.audioPlayer.playSong(song, stream)
-    } catch (err: any) {
-      console.error('Play error:', err)
-    }
+  const playSong = useCallback(async (songs: SubsonicSong[], songId: string) => {
+    const index = songs.findIndex((s) => s.id === songId)
+    if (index === -1) return
+
+    setOriginalQueue(songs)
+    setShuffledQueue(shuffleArray(songs))
+
+    await window.api.audioPlayer.playSongs(songs, index)
   }, [])
 
-  const playSong = useCallback(
-    async (songs: SubsonicSong[], songId: string) => {
-      setOriginalQueue(songs)
-      setShuffledQueue(shuffleArray(songs))
+  const shufflePlay = useCallback(async (songs: SubsonicSong[]) => {
+    setShuffle(true)
+    const shuffled = shuffleArray(songs)
+    setOriginalQueue(songs)
+    setShuffledQueue(shuffled)
 
-      const song = songs.find((s) => s.id === songId)
-      if (song) {
-        await playSongInternal(song)
-      }
-    },
-    [playSongInternal]
-  )
-
-  const shufflePlay = useCallback(
-    async (songs: SubsonicSong[]) => {
-      setShuffle(true)
-      const shuffled = shuffleArray(songs)
-      setOriginalQueue(songs)
-      setShuffledQueue(shuffled)
-
-      if (shuffled.length > 0) {
-        await playSongInternal(shuffled[0])
-      }
-    },
-    [playSongInternal]
-  )
+    await window.api.audioPlayer.playSongs(shuffled, 0)
+  }, [])
 
   const playFromQueue = useCallback(
     async (songId: string) => {
-      const song = queue.find((s) => s.id === songId)
-      if (song) {
-        await playSongInternal(song)
+      const index = queue.findIndex((s) => s.id === songId)
+      if (index !== -1) {
+        await window.api.audioPlayer.playSongs(queue, index)
       }
     },
-    [queue, playSongInternal]
+    [queue]
   )
 
-  const playNext = useCallback(() => {
-    if (queue.length === 0) return
+  const playNext = useCallback(async () => {
+    await window.api.audioPlayer.next()
+  }, [])
 
-    const currentIndex = queue.findIndex((s) => s.id === currentSong?.id)
-    let nextIndex = currentIndex + 1
+  const playPrevious = useCallback(async () => {
+    await window.api.audioPlayer.previous()
+  }, [])
 
-    if (nextIndex >= queue.length) {
-      if (repeat === 'all') {
-        nextIndex = 0
-      } else {
-        return // End of queue
+  const toggleShuffle = useCallback(async () => {
+    const nextShuffle = !shuffle
+    setShuffle(nextShuffle)
+
+    const nextQueue = nextShuffle ? shuffleArray(originalQueue) : originalQueue
+    setShuffledQueue(nextQueue)
+
+    if (currentSong) {
+      const index = nextQueue.findIndex((s) => s.id === currentSong.id)
+      if (index !== -1) {
+        await window.api.audioPlayer.playSongs(nextQueue, index)
       }
     }
-
-    const nextSong = queue[nextIndex]
-    if (nextSong) {
-      playSongInternal(nextSong)
-    }
-  }, [queue, currentSong, repeat, playSongInternal])
-
-  const playPrevious = useCallback(() => {
-    if (queue.length === 0) return
-
-    const currentIndex = queue.findIndex((s) => s.id === currentSong?.id)
-    let prevIndex = currentIndex - 1
-
-    if (prevIndex < 0) {
-      if (repeat === 'all') {
-        prevIndex = queue.length - 1
-      } else {
-        prevIndex = 0 // Just restart current song or stay at first
-      }
-    }
-
-    const prevSong = queue[prevIndex]
-    if (prevSong) {
-      playSongInternal(prevSong)
-    }
-  }, [queue, currentSong, repeat, playSongInternal])
-
-  const toggleShuffle = useCallback(() => {
-    setShuffle((prev) => {
-      const nextShuffle = !prev
-      if (nextShuffle) {
-        const newShuffled = shuffleArray(originalQueue)
-        if (currentSong) {
-          const index = newShuffled.findIndex((s) => s.id === currentSong.id)
-          if (index > -1) {
-            const [song] = newShuffled.splice(index, 1)
-            newShuffled.unshift(song)
-          }
-        }
-        setShuffledQueue(newShuffled)
-      }
-      return nextShuffle
-    })
-  }, [originalQueue, currentSong])
+  }, [originalQueue, currentSong, shuffle])
 
   const addToQueue = useCallback((song: SubsonicSong) => {
     setOriginalQueue((prev) => [...prev, song])
@@ -335,6 +286,11 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
     },
     [currentSongId, playNext]
   )
+
+  const setRepeat = useCallback(async (mode: RepeatMode) => {
+    setRepeatState(mode)
+    await window.api.audioPlayer.updateSettings({ repeat: mode })
+  }, [])
 
   const resume = useCallback(async () => {
     await window.api.audioPlayer.resume()
@@ -364,26 +320,30 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
     return await window.api.audioPlayer.getAudioDevices()
   }, [])
 
+  const refreshDevices = useCallback(async () => {
+    return await window.api.audioPlayer.refreshDevices()
+  }, [])
+
+  const onDevicesChanged = useCallback((callback: (devices: AudioDevice[]) => void) => {
+    return window.api.audioPlayer.onDevicesChanged(callback)
+  }, [])
+
   // Handle automatic song advancement
   const repeatRef = useRef(repeat)
+  const currentSongRef = useRef(currentSong)
+  const playNextRef = useRef(playNext)
+
   useEffect(() => {
     repeatRef.current = repeat
   }, [repeat])
 
   useEffect(() => {
-    const handleEndedInternal = () => {
-      if (repeatRef.current === 'one') {
-        if (currentSong) {
-          playSongInternal(currentSong)
-        }
-      } else {
-        playNext()
-      }
-    }
+    currentSongRef.current = currentSong
+  }, [currentSong])
 
-    const cleanup = onSongEnded(handleEndedInternal)
-    return cleanup
-  }, [onSongEnded, playNext, currentSong, playSongInternal])
+  useEffect(() => {
+    playNextRef.current = playNext
+  }, [playNext])
 
   return (
     <AudioPlayerContext.Provider
@@ -414,11 +374,13 @@ export const AudioPlayerProvider: React.FC<AudioPlayerProviderProps> = ({
         toggleMute,
         updateSettings,
         getAudioDevices,
+        refreshDevices,
         seek,
         isSeekable,
         duration,
         currentTime,
         onSongEnded,
+        onDevicesChanged,
         addToQueue,
         clearQueue,
         removeFromQueue,

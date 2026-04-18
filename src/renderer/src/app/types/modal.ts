@@ -9,10 +9,16 @@ export type ModalType =
   | 'share-station'
   | 'add-to-playlist'
   | 'add-to-curation'
+  | 'create-curation'
+  | 'edit-curation'
+  | 'delete-curation'
   | 'similar-stations'
   | 'alarm'
   | 'recorder'
   | 'import-export'
+  | 'edit-playlist'
+  | 'delete-playlist'
+  | 'create-playlist'
 
 export interface BaseModalProps {
   onClose: () => void
@@ -46,12 +52,19 @@ export interface ModalContextValue {
   // Specialized helper methods for common use cases
   openShareModal: (station: Station) => string
   openPlaylistModal: (song: SubsonicSong) => string
+  openCurationModal: (station: Station) => string
+  openCreateCurationModal: (onCreated?: (id: string) => void) => string
   openSimilarStationsModal: (station: Station) => string
   openKeyboardShortcutsModal: () => string
   openSleepTimerModal: () => string
   openAlarmModal: () => string
   openRecorderModal: () => string
   openImportExportModal: () => string
+  openEditCurationModal: (collectionId: string) => string
+  openDeleteCurationModal: (collectionId: string) => string
+  openEditPlaylistModal: (playlistId: string) => string
+  openDeletePlaylistModal: (playlistId: string) => string
+  openCreatePlaylistModal: () => string
 }
 
 // Props interfaces for specific modals
@@ -60,12 +73,34 @@ export interface ShareStationModalProps extends BaseModalProps {
 }
 
 export interface AddToPlaylistModalProps extends BaseModalProps {
-  station: Station
+  song: SubsonicSong
 }
 
 export interface AddToCurationModalProps extends BaseModalProps {
   station: Station
 }
+
+export interface CreateCurationModalProps extends BaseModalProps {
+  onCreated?: (id: string) => void
+}
+
+export interface EditCurationModalProps extends BaseModalProps {
+  collectionId: string
+}
+
+export interface DeleteCurationModalProps extends BaseModalProps {
+  collectionId: string
+}
+
+export interface EditPlaylistModalProps extends BaseModalProps {
+  playlistId: string
+}
+
+export interface DeletePlaylistModalProps extends BaseModalProps {
+  playlistId: string
+}
+
+export interface CreatePlaylistModalProps extends BaseModalProps {}
 
 export interface SimilarStationsModalProps extends BaseModalProps {
   station: Station

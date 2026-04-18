@@ -335,7 +335,7 @@ body.maximized {
 }
 
 .audio-player-right {
-  @apply w-full gap-1 flex justify-end items-center;
+  @apply w-full gap-3 flex justify-end items-center;
 }
 
 .audio-player-logo {
@@ -351,6 +351,7 @@ body.maximized {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 72px;
 }
 
 .audio-player-station {
@@ -941,7 +942,12 @@ body.maximized {
 }
 
 .settings-sidebar-wrapper {
-  @apply p-2 flex gap-2;
+  @apply p-2 flex gap-2 relative;
+}
+
+.settings-sidebar-wrapper::after {
+  content: '';
+  @apply absolute right-0 left-0 -bottom-1 w-full h-px rounded-lg pointer-events-none bg-subtle;
 }
 
 @media (width < 48rem) {
@@ -952,12 +958,17 @@ body.maximized {
 }
 
 .settings-sidebar-item {
-  @apply flex items-center justify-center px-3 py-2 use-theme-text min-w-40;
-  @apply border-b-2 border-transparent cursor-pointer hover:border-subtle;
+  @apply flex items-center justify-center px-3 py-2 use-theme-text min-w-40 relative use-transition;
+  @apply border border-transparent cursor-pointer hover:border-faint rounded-md hover:shadow-glass hover:bg-second-layer-thin dark:hover:bg-second-layer-thin-dark;
 }
 
 .settings-sidebar-item.active {
-  @apply border-zinc-400;
+  @apply bg-second-layer-thin-active dark:bg-second-layer-thin-active-dark shadow-glass border-subtle;
+}
+
+.settings-sidebar-item.active::after {
+  content: '';
+  @apply absolute -bottom-3 left-1/2 transform -translate-x-1/2 w-full h-0.75 rounded-t-xl bg-zinc-500/50;
 }
 
 .settings-content {
@@ -1397,7 +1408,7 @@ body.maximized {
 
 .settings-theme-option,
 .pill-option {
-  @apply flex items-center gap-2 px-4 py-1 rounded-full use-transition btn border border-subtle use-theme-text max-w-full;
+  @apply flex items-center gap-2 px-6 py-1.5 rounded-sm cursor-pointer use-transition btn border border-subtle use-theme-text max-w-full;
 }
 
 .settings-theme-option-active,
@@ -1419,14 +1430,14 @@ body.maximized {
 
 /* Context Menu */
 .context-menu {
-  @apply bg-second-layer-thin dark:bg-second-layer-thin-dark border border-subtle shadow-main rounded-md backdrop-blur-normal;
-  @apply min-w-48 overflow-hidden flex flex-col gap-1 p-1;
+  @apply bg-white dark:bg-zinc-950 border border-subtle shadow-main rounded-sm backdrop-blur-normal;
+  @apply min-w-48 overflow-hidden flex flex-col gap-0.5 p-1;
 }
 
 .context-menu-item {
-  @apply flex items-center gap-3 px-4 py-2 text-left w-full border border-transparent rounded-sm cursor-pointer transition-all duration-200;
+  @apply flex flex-row-reverse items-center gap-4 px-3 py-1.5 text-left w-full rounded-xs cursor-pointer transition-all duration-200;
   @apply bg-transparent text-black dark:text-white;
-  @apply hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark hover:shadow-glass hover:border-faint;
+  @apply hover:bg-second-layer-thin dark:hover:bg-second-layer-thin-dark hover:shadow-glass;
 
   &:disabled {
     @apply opacity-50 cursor-not-allowed hover:bg-transparent;
@@ -1707,7 +1718,7 @@ body.maximized {
 }
 
 .navbar-categories {
-  @apply overflow-y-auto flex flex-col relative;
+  @apply overflow-y-auto flex flex-col relative pb-30;
 }
 
 .navbar-category {
@@ -1716,4 +1727,27 @@ body.maximized {
 
 .navbar-category-header {
   @apply text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 p-3 sticky top-0 bg-[#e7f7ee] dark:bg-black z-1;
+}
+
+/* Song Thumbnail Grid */
+.thumbnail-grid {
+  @apply grid grid-cols-2 grid-rows-2 w-48 h-48 shrink-0 rounded-sm overflow-hidden;
+  @apply bg-second-layer-thin dark:bg-second-layer-thin-dark shadow-glass;
+}
+
+.thumbnail-grid-item {
+  @apply w-full h-full overflow-hidden;
+  @apply bg-white dark:bg-zinc-900 flex items-center justify-center;
+}
+
+.thumbnail-grid-image {
+  @apply w-full h-full object-cover;
+}
+
+.thumbnail-grid-fallback {
+  @apply w-full h-full flex items-center justify-center;
+}
+
+.queue-header {
+  @apply sticky top-0 backdrop-blur-3xl rounded-sm shadow-glass px-4 z-1001 py-1 w-fit text-lg font-light font-unbounded
 }
