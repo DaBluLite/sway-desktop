@@ -21,12 +21,15 @@ nsis:
 linux:
   target:
     - AppImage
-    - snap
     - deb
     - rpm
     - flatpak
   maintainer: DaBluLite
   category: Utility
+flatpak:
+  id: dev.dablulite.SwayDesktop
+  license: MIT
+  runtimeVersion: 23.08
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
