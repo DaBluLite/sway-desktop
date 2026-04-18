@@ -22,7 +22,7 @@ import {
   getSimilarityReasons,
   getPrimaryGenre
 } from '../utils/similar-stations'
-import { AddToPlaylistModal } from './add-to-playlist-modal'
+import { useModal } from '@renderer/contexts/modal-context'
 
 interface SimilarStationsModalProps {
   station: Station
@@ -36,10 +36,10 @@ export const SimilarStationsModal: React.FC<SimilarStationsModalProps> = ({
   const [similarStations, setSimilarStations] = useState<Station[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [playlistModalStation, setPlaylistModalStation] = useState<Station | null>(null)
 
   const { isFavourite, toggleFavourite } = useFavourites()
   const { play, currentStation, isPlaying } = useAudioPlayer()
+  const { openCurationModal } = useModal()
 
   const fetchSimilarStations = useCallback(async () => {
     setIsLoading(true)
@@ -101,10 +101,6 @@ export const SimilarStationsModal: React.FC<SimilarStationsModalProps> = ({
   useEffect(() => {
     fetchSimilarStations()
   }, [fetchSimilarStations])
-
-  const handlePlay = (stationToPlay: Station) => {
-    play(stationToPlay)
-  }
 
   const isCurrentlyPlaying = (s: Station) => {
     return isPlaying && currentStation?.url === s.url
@@ -192,7 +188,7 @@ export const SimilarStationsModal: React.FC<SimilarStationsModalProps> = ({
                       className={`flex items-center gap-3 p-2 rounded-md use-transition cursor-pointer group ${
                         playing ? 'raised-interface-lg' : 'raised-interface'
                       }`}
-                      onClick={() => handlePlay(similarStation)}
+                      onClick={() => play(similarStation)}
                     >
                       {/* Station Image */}
                       <div className="w-12 h-12 rounded-sm raised-interface flex items-center justify-center shrink-0 overflow-hidden">
@@ -235,7 +231,7 @@ export const SimilarStationsModal: React.FC<SimilarStationsModalProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setPlaylistModalStation(similarStation)
+                            openCurationModal(similarStation)
                           }}
                           className="p-2 invis-btn rounded-full use-transition"
                           aria-label="Add to playlist"
@@ -310,14 +306,6 @@ export const SimilarStationsModal: React.FC<SimilarStationsModalProps> = ({
           )}
         </div>
       </div>
-
-      {/* Add to Playlist Modal */}
-      {playlistModalStation && (
-        <AddToPlaylistModal
-          station={playlistModalStation}
-          onClose={() => setPlaylistModalStation(null)}
-        />
-      )}
     </>
   )
 }

@@ -1,6 +1,7 @@
 import { useLibrary } from '@renderer/contexts/library-context'
 import { createFileRoute } from '@tanstack/react-router'
 import SongRow from '@renderer/components/song-row'
+import { useState } from 'react'
 
 export const Route = createFileRoute('/library/songs/')({
   component: RouteComponent
@@ -8,6 +9,7 @@ export const Route = createFileRoute('/library/songs/')({
 
 function RouteComponent() {
   const { starred } = useLibrary()
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([])
   const starredSongs = starred?.song || []
   return (
     <div className="flex flex-col px-12 w-full h-screen gap-2">
@@ -34,7 +36,24 @@ function RouteComponent() {
       </div>
       <div className="overflow-y-auto flex flex-col pb-35">
         {starredSongs?.map((song, i) => (
-          <SongRow song={song} i={i} key={song.id} playlist={starredSongs} />
+          <SongRow
+            onSelect={(e) => {
+              e.stopPropagation()
+              if (e.ctrlKey || e.metaKey) {
+                // Toggle selection
+                setSelectedSongs((prev) =>
+                  prev.includes(song.id) ? prev.filter((id) => id !== song.id) : [...prev, song.id]
+                )
+              } else {
+                setSelectedSongs([song.id])
+              }
+            }}
+            selected={selectedSongs.includes(song.id)}
+            song={song}
+            i={i}
+            key={song.id}
+            playlist={starredSongs}
+          />
         ))}
       </div>
     </div>

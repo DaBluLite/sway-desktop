@@ -1171,7 +1171,7 @@ body.maximized {
 }
 
 .station-carousel-scroll-arrow {
-  @apply absolute top-[calc(96px-24px)] z-10;
+  @apply absolute top-18 z-10;
   @apply w-12 h-12 rounded-full flex items-center justify-center;
   @apply btn backdrop-blur-normal;
   @apply text-black dark:text-white;
@@ -1279,7 +1279,7 @@ body.maximized {
 }
 
 .playlist-carousel-scroll-arrow {
-  @apply absolute top-[calc(96px-24px)] z-10;
+  @apply absolute top-18 z-10;
   @apply w-12 h-12 rounded-full flex items-center justify-center;
   @apply btn backdrop-blur-normal;
   @apply text-black dark:text-white;
@@ -1546,7 +1546,7 @@ body.maximized {
 
 /* Sleep Timer Badge */
 .sleep-timer-badge {
-  @apply absolute -top-1 -right-1 text-[10px] font-bold bg-green-500 text-white rounded-full px-1 min-w-[18px] text-center;
+  @apply absolute -top-1 -right-1 text-[10px] font-bold bg-green-500 text-white rounded-full px-1 min-w-4.5 text-center;
   animation: pulse-glow 2s ease-in-out infinite;
 }
 

@@ -12,11 +12,7 @@ interface StationCarouselProps {
   onStationPlay: (station: Station) => void
 }
 
-export const StationCarousel: React.FC<StationCarouselProps> = ({
-  title,
-  fetchStations,
-  onStationPlay
-}) => {
+export const StationCarousel: React.FC<StationCarouselProps> = ({ title, fetchStations }) => {
   const [stations, setStations] = useState<Station[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -192,11 +188,7 @@ export const StationCarousel: React.FC<StationCarouselProps> = ({
         <div className="station-carousel-scroll" ref={scrollContainerRef}>
           <div className="station-carousel-content">
             {stations.map((station, index) => (
-              <StationCard
-                key={`${station.url}-${index}`}
-                station={station}
-                onPlay={onStationPlay}
-              />
+              <StationCard key={`${station.url}-${index}`} station={station} />
             ))}
 
             {hasMore && (

@@ -1,4 +1,3 @@
-import { useAudioPlayer } from '@renderer/contexts/audio-player-context'
 import { createFileRoute } from '@tanstack/react-router'
 import { useFavourites } from '@renderer/contexts/favourites-context'
 import { StationCard } from '@renderer/components/station-card'
@@ -9,7 +8,6 @@ export const Route = createFileRoute('/library/stations/')({
 
 function RouteComponent() {
   const { favourites } = useFavourites()
-  const { play } = useAudioPlayer()
 
   return (
     <div className="flex flex-col w-full h-screen">
@@ -18,7 +16,7 @@ function RouteComponent() {
       </div>
       <div className="overflow-y-auto flex flex-wrap px-12 pt-8 pb-35 gap-x-4">
         {favourites?.map((station, i) => (
-          <StationCard key={station.url + '_' + i} station={station} onPlay={() => play(station)} />
+          <StationCard key={station.url + '_' + i} station={station} />
         ))}
       </div>
     </div>

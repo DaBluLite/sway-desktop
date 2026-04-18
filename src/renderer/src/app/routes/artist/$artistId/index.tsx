@@ -24,6 +24,7 @@ function ArtistPage() {
   const [artistCoverUrl, setArtistCoverUrl] = useState<string>()
   const { playSong } = useAudioPlayer()
   const { isStarred, star, unstar } = useLibrary()
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([])
 
   const handlePlayAlbum = useCallback(
     async (album: ExtendedAlbum) => {
@@ -143,7 +144,24 @@ function ArtistPage() {
         </div>
         <SongListHeader />
         {songs.map((song, i) => (
-          <SongRow key={song.id} song={song} i={i} playlist={songs} />
+          <SongRow
+            onSelect={(e) => {
+              e.stopPropagation()
+              if (e.ctrlKey || e.metaKey) {
+                // Toggle selection
+                setSelectedSongs((prev) =>
+                  prev.includes(song.id) ? prev.filter((id) => id !== song.id) : [...prev, song.id]
+                )
+              } else {
+                setSelectedSongs([song.id])
+              }
+            }}
+            selected={selectedSongs.includes(song.id)}
+            key={song.id}
+            song={song}
+            i={i}
+            playlist={songs}
+          />
         ))}
         {albums.length > 0 && (
           <AlbumCarousel

@@ -52,6 +52,7 @@ function SearchPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [subsonicResults, setSubsonicResults] = useState<SubsonicSearchResult | null>(null)
   const [stationResults, setStationResults] = useState<Station[]>([])
+  const [selectedSongs, setSelectedSongs] = useState<string[]>([])
   const router = useRouter()
   const { collections } = useCurations()
 
@@ -183,6 +184,7 @@ function SearchPage() {
                       <div className="flex flex-col gap-2">
                         {subsonicResults.song.slice(0, 4).map((song, i) => (
                           <SongRow
+                            selected={false}
                             key={song.id}
                             song={song}
                             i={i}
@@ -260,6 +262,20 @@ function SearchPage() {
                   subsonicResults.song.length > 0 &&
                   subsonicResults.song.map((song, i) => (
                     <SongRow
+                      onSelect={(e) => {
+                        e.stopPropagation()
+                        if (e.ctrlKey || e.metaKey) {
+                          // Toggle selection
+                          setSelectedSongs((prev) =>
+                            prev.includes(song.id)
+                              ? prev.filter((id) => id !== song.id)
+                              : [...prev, song.id]
+                          )
+                        } else {
+                          setSelectedSongs([song.id])
+                        }
+                      }}
+                      selected={selectedSongs.includes(song.id)}
                       key={song.id}
                       song={song}
                       i={i}
