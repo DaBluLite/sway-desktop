@@ -66,6 +66,18 @@ jobs:
         with:
           version: 8
 
+      - name: Setup flatpak-builder
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y flatpak-builder flatpak
+
+      - name: Setup rpbuild
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y rpm build-essential
+
       - name: Install dependencies
         run: pnpm install
 
