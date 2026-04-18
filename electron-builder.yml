@@ -1,4 +1,4 @@
-appId: dev.dablulite.sway
+appId: dev.dablulite.SwayDesktop
 productName: Sway Music
 directories:
   buildResources: build
@@ -27,7 +27,6 @@ linux:
   maintainer: DaBluLite
   category: Utility
 flatpak:
-  id: dev.dablulite.SwayDesktop
   license: MIT
   runtimeVersion: 23.08
 appImage:

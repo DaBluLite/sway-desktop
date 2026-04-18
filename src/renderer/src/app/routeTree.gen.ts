@@ -13,7 +13,6 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SearchIndexRouteImport } from './routes/search/index'
-import { Route as RecordingsIndexRouteImport } from './routes/recordings/index'
 import { Route as RadioIndexRouteImport } from './routes/radio/index'
 import { Route as LibraryIndexRouteImport } from './routes/library/index'
 import { Route as SettingsSubsonicRouteImport } from './routes/settings/subsonic'
@@ -50,11 +49,6 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
 const SearchIndexRoute = SearchIndexRouteImport.update({
   id: '/search/',
   path: '/search/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RecordingsIndexRoute = RecordingsIndexRouteImport.update({
-  id: '/recordings/',
-  path: '/recordings/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RadioIndexRoute = RadioIndexRouteImport.update({
@@ -155,7 +149,6 @@ export interface FileRoutesByFullPath {
   '/settings/subsonic': typeof SettingsSubsonicRoute
   '/library/': typeof LibraryIndexRoute
   '/radio/': typeof RadioIndexRoute
-  '/recordings/': typeof RecordingsIndexRoute
   '/search/': typeof SearchIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/album/$albumId/': typeof AlbumAlbumIdIndexRoute
@@ -178,7 +171,6 @@ export interface FileRoutesByTo {
   '/settings/subsonic': typeof SettingsSubsonicRoute
   '/library': typeof LibraryIndexRoute
   '/radio': typeof RadioIndexRoute
-  '/recordings': typeof RecordingsIndexRoute
   '/search': typeof SearchIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/album/$albumId': typeof AlbumAlbumIdIndexRoute
@@ -203,7 +195,6 @@ export interface FileRoutesById {
   '/settings/subsonic': typeof SettingsSubsonicRoute
   '/library/': typeof LibraryIndexRoute
   '/radio/': typeof RadioIndexRoute
-  '/recordings/': typeof RecordingsIndexRoute
   '/search/': typeof SearchIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/album/$albumId/': typeof AlbumAlbumIdIndexRoute
@@ -229,7 +220,6 @@ export interface FileRouteTypes {
     | '/settings/subsonic'
     | '/library/'
     | '/radio/'
-    | '/recordings/'
     | '/search/'
     | '/settings/'
     | '/album/$albumId/'
@@ -252,7 +242,6 @@ export interface FileRouteTypes {
     | '/settings/subsonic'
     | '/library'
     | '/radio'
-    | '/recordings'
     | '/search'
     | '/settings'
     | '/album/$albumId'
@@ -276,7 +265,6 @@ export interface FileRouteTypes {
     | '/settings/subsonic'
     | '/library/'
     | '/radio/'
-    | '/recordings/'
     | '/search/'
     | '/settings/'
     | '/album/$albumId/'
@@ -297,7 +285,6 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   LibraryIndexRoute: typeof LibraryIndexRoute
   RadioIndexRoute: typeof RadioIndexRoute
-  RecordingsIndexRoute: typeof RecordingsIndexRoute
   SearchIndexRoute: typeof SearchIndexRoute
   AlbumAlbumIdIndexRoute: typeof AlbumAlbumIdIndexRoute
   ArtistArtistIdIndexRoute: typeof ArtistArtistIdIndexRoute
@@ -340,13 +327,6 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search/'
       preLoaderRoute: typeof SearchIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/recordings/': {
-      id: '/recordings/'
-      path: '/recordings'
-      fullPath: '/recordings/'
-      preLoaderRoute: typeof RecordingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/radio/': {
@@ -496,7 +476,6 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   LibraryIndexRoute: LibraryIndexRoute,
   RadioIndexRoute: RadioIndexRoute,
-  RecordingsIndexRoute: RecordingsIndexRoute,
   SearchIndexRoute: SearchIndexRoute,
   AlbumAlbumIdIndexRoute: AlbumAlbumIdIndexRoute,
   ArtistArtistIdIndexRoute: ArtistArtistIdIndexRoute,
