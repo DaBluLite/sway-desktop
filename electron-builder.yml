@@ -25,9 +25,7 @@ linux:
     - rpm
     - flatpak
   maintainer: DaBluLite
-  category: Utility
-  desktop:
-    StartupWMClass: dev.dablulite.SwayDesktop
+  category: Multimedia
 flatpak:
   license: LICENSE.md
   runtimeVersion: 23.08
