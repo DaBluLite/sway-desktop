@@ -41,6 +41,44 @@ export class SubsonicService implements ISubsonicService {
   private config: SubsonicConfig
   private registeredWindows: Set<number> = new Set()
 
+  private encodeStoredSecret(value: string): string {
+    if (safeStorage.isEncryptionAvailable()) {
+      const encrypted = safeStorage.encryptString(value).toString('base64')
+      return `enc:${encrypted}`
+    }
+
+    return `plain:${value}`
+  }
+
+  private decodeStoredSecret(value: unknown): string {
+    if (typeof value !== 'string') {
+      throw new Error('Invalid stored credential value')
+    }
+
+    if (value.startsWith('enc:')) {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('Encrypted credentials are not available in this environment')
+      }
+
+      return safeStorage.decryptString(Buffer.from(value.slice(4), 'base64'))
+    }
+
+    if (value.startsWith('plain:')) {
+      return value.slice(6)
+    }
+
+    // Backward compatibility for older formats without prefixes.
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        return safeStorage.decryptString(Buffer.from(value, 'base64'))
+      } catch {
+        // Fall through to plain-text legacy handling.
+      }
+    }
+
+    return value
+  }
+
   constructor() {
     this.config = DEFAULT_SUBSONIC_CONFIG
 
@@ -65,13 +103,8 @@ export class SubsonicService implements ISubsonicService {
       const storedData = this.store.get('credentials') as Record<string, unknown> | undefined
       if (storedData && typeof storedData === 'object') {
         const creds = storedData as Record<string, unknown>
-        // Decrypt sensitive fields using safeStorage
-        const decryptedPassword = safeStorage.decryptString(
-          Buffer.from(creds.hashedPassword as string, 'base64')
-        )
-        const decryptedSalt = safeStorage.decryptString(
-          Buffer.from(creds.passwordSalt as string, 'base64')
-        )
+        const decryptedPassword = this.decodeStoredSecret(creds.hashedPassword)
+        const decryptedSalt = this.decodeStoredSecret(creds.passwordSalt)
 
         this.credentials = {
           username: creds.username as string,
@@ -96,13 +129,8 @@ export class SubsonicService implements ISubsonicService {
         return
       }
 
-      // Encrypt sensitive fields using safeStorage
-      const encryptedPassword = safeStorage
-        .encryptString(this.credentials.hashedPassword)
-        .toString('base64')
-      const encryptedSalt = safeStorage
-        .encryptString(this.credentials.passwordSalt)
-        .toString('base64')
+      const encryptedPassword = this.encodeStoredSecret(this.credentials.hashedPassword)
+      const encryptedSalt = this.encodeStoredSecret(this.credentials.passwordSalt)
 
       this.store.set('credentials', {
         username: this.credentials.username,

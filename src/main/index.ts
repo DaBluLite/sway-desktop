@@ -11,6 +11,11 @@ import { AudioPlayerChannels } from '../types/audio-player'
 let subsonicService: SubsonicService | null = null
 let audioPlayerService: AudioPlayerService | null = null
 
+if (process.platform === 'linux') {
+  // Keep WM_CLASS stable so taskbar pinning maps to the desktop entry.
+  app.commandLine.appendSwitch('class', 'dev.dablulite.SwayDesktop')
+}
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({

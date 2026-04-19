@@ -26,6 +26,8 @@ linux:
     - flatpak
   maintainer: DaBluLite
   category: Utility
+  desktop:
+    StartupWMClass: dev.dablulite.SwayDesktop
 flatpak:
   license: LICENSE.md
   runtimeVersion: 23.08
@@ -34,3 +36,7 @@ appImage:
 npmRebuild: false
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
+publish:
+  provider: github
+  owner: DaBluLite
+  repo: sway-desktop
